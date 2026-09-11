@@ -1,0 +1,17 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.env
+.env.local
+
+# Expo / EAS build output
+*.apk
+*.aab
+*.ipa
+ios/
+android/
+
+.DS_Store
+Thumbs.db
