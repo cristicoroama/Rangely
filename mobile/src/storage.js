@@ -1,5 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { totals } from "./ride";
+
 /**
  * Local persistence. Everything lives on the phone for now — there is no
  * account and no server yet, and a tracker that needs a login before it will
@@ -11,11 +13,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const RIDES_KEY = "rangely.rides.v1";
 const SCOOTER_KEY = "rangely.scooter.v1";
 
+const DEFAULT_SCOOTER = { name: "My scooter", packWh: 500 };
+
 export async function loadRides() {
   try {
     const raw = await AsyncStorage.getItem(RIDES_KEY);
     const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    // Rides written before the track was thinned as it was recorded still
+    // carry `points`. Reading both costs one line and means a history from an
+    // earlier build is not silently half-missing.
+    return list.map((r) => (r && !r.track && Array.isArray(r.points) ? { ...r, track: r.points } : r));
   } catch {
     // A corrupt blob must not brick the app on launch; an empty history is
     // recoverable, a crash loop is not.
@@ -42,9 +50,9 @@ export async function loadScooter() {
     const raw = await AsyncStorage.getItem(SCOOTER_KEY);
     // packWh is what turns a battery percentage into a comparable number, so
     // a sensible default beats an empty field the user skips past.
-    return raw ? JSON.parse(raw) : { name: "My scooter", packWh: 500 };
+    return raw ? { ...DEFAULT_SCOOTER, ...JSON.parse(raw) } : { ...DEFAULT_SCOOTER };
   } catch {
-    return { name: "My scooter", packWh: 500 };
+    return { ...DEFAULT_SCOOTER };
   }
 }
 
@@ -53,15 +61,7 @@ export async function saveScooter(s) {
   return s;
 }
 
-/** Lifetime totals, computed rather than stored — one source of truth. */
-export function totals(rides) {
-  return rides.reduce(
-    (a, r) => ({
-      rides: a.rides + 1,
-      distance: a.distance + (r.distance || 0),
-      movingTime: a.movingTime + (r.movingTime || 0),
-      wh: a.wh + (r.energy?.wh || 0),
-    }),
-    { rides: 0, distance: 0, movingTime: 0, wh: 0 },
-  );
-}
+// Totals are ride maths, and they live with the rest of it so they can be
+// tested without a phone. Re-exported here because this is where callers
+// already look for them.
+export { totals };

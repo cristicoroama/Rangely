@@ -37,6 +37,53 @@ export function Button({ title, onPress, tone = "accent", disabled }) {
   );
 }
 
+/**
+ * A trend, drawn with nothing but Views.
+ *
+ * A chart library for eight bars would be a megabyte of dependency to say
+ * "it is going down". Bars are scaled between the smallest and largest value
+ * with a floor, so a flat series reads as flat instead of as noise amplified
+ * to full height.
+ */
+export function Sparkline({ values, height = 34 }) {
+  const nums = (values || []).filter((v) => Number.isFinite(v));
+  if (nums.length < 2) return null;
+
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  const span = max - min;
+
+  return (
+    <View style={[s.spark, { height }]}>
+      {nums.map((v, i) => {
+        // No span means every ride measured the same: half height, flat.
+        const frac = span > 0 ? (v - min) / span : 0.5;
+        return (
+          <View
+            key={i}
+            style={[
+              s.sparkBar,
+              {
+                height: Math.max(3, (0.25 + 0.75 * frac) * height),
+                backgroundColor: i === nums.length - 1 ? T.accent : T.accentDim,
+              },
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+/** A small label that carries a state, not an action. */
+export function Pill({ children, tone = "dim" }) {
+  return (
+    <View style={[s.pill, tone === "accent" && s.pillAccent]}>
+      <Text style={[s.pillText, tone === "accent" && s.pillTextAccent]}>{children}</Text>
+    </View>
+  );
+}
+
 export function SectionTitle({ children, right }) {
   return (
     <View style={s.sectionRow}>
@@ -73,6 +120,18 @@ const s = StyleSheet.create({
   btnPressed: { opacity: 0.8 },
   btnText: { color: "#07100b", fontSize: 16, fontWeight: "800", letterSpacing: 0.3 },
   btnTextGhost: { color: T.text },
+  spark: { flexDirection: "row", alignItems: "flex-end", gap: 3, marginTop: 14 },
+  sparkBar: { flex: 1, borderRadius: 2, minWidth: 3 },
+  pill: {
+    backgroundColor: T.cardHi, borderColor: T.border, borderWidth: 1,
+    borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3,
+  },
+  pillAccent: { borderColor: T.accentDim },
+  pillText: {
+    color: T.dim, fontSize: 10, fontWeight: "700",
+    textTransform: "uppercase", letterSpacing: 0.8,
+  },
+  pillTextAccent: { color: T.accent },
   sectionRow: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     marginTop: 26, marginBottom: 10,

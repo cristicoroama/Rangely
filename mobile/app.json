@@ -17,7 +17,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.rangely.mobile",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Rangely records your route while you ride, so it can work out your distance, speed and real range."
+        "NSLocationWhenInUseUsageDescription": "Rangely records your route while you ride, so it can work out your distance, speed and real range.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Rangely keeps recording with the screen off, so a ride is not cut short when you put the phone in your pocket.",
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -30,7 +34,10 @@
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
       ]
     },
     "web": {
@@ -40,7 +47,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Rangely records your route while you ride, so it can work out your distance, speed and real range."
+          "locationWhenInUsePermission": "Rangely records your route while you ride, so it can work out your distance, speed and real range.",
+          "locationAlwaysAndWhenInUsePermission": "Rangely keeps recording with the screen off, so a ride is not cut short when you put the phone in your pocket.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ]
     ]
