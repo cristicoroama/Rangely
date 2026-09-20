@@ -38,6 +38,15 @@ export async function saveRide(ride) {
   return next;
 }
 
+/** Overwrite the whole history in one write. Used by the delete path and by
+ *  the development seed; a loop of saveRide() would re-read and re-write the
+ *  list once per ride. */
+export async function replaceRides(list) {
+  const next = Array.isArray(list) ? list : [];
+  await AsyncStorage.setItem(RIDES_KEY, JSON.stringify(next));
+  return next;
+}
+
 export async function deleteRide(id) {
   const rides = await loadRides();
   const next = rides.filter((r) => r.id !== id);

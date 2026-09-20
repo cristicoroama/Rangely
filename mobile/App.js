@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, Alert,
+  Modal, Pressable,
 } from "react-native";
 
 import { T } from "./src/theme";
 import { Button, Card, Pill, SectionTitle, Sparkline, Stat } from "./src/ui";
+import { RouteMap, RouteShape } from "./src/map";
 import { useRideTracker } from "./src/useRideTracker";
 import {
   avgSpeed, energyStats, fmtDistance, fmtDuration, msToKmh, packHealth, streakDays, totals,
 } from "./src/ride";
-import { deleteRide, loadRides, loadScooter, saveRide, saveScooter } from "./src/storage";
+import { buildDemoRides } from "./src/demoRides";
+import {
+  deleteRide, loadRides, loadScooter, replaceRides, saveRide, saveScooter,
+} from "./src/storage";
 
 /** Under fifty metres there is no ride, only GPS drift — saving it would
  *  pollute the history and every lifetime total built on it. */
@@ -43,6 +48,68 @@ function BatteryInput({ label, value, onChange }) {
   );
 }
 
+/** One ride, full width, on real streets.
+ *
+ *  A route is the one thing in this app that cannot be told in numbers — you
+ *  recognise a ride by its shape long before you recognise it by its distance
+ *  — so it gets the whole screen rather than a thumbnail. */
+function RideDetail({ ride, onClose }) {
+  if (!ride) return null;
+  const hasTrack = (ride.track?.length ?? 0) > 1;
+
+  return (
+    <Modal visible animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={s.safe}>
+        <ScrollView contentContainerStyle={s.scroll}>
+          <View style={s.head}>
+            <Text style={s.detailTitle}>
+              {Number.isFinite(ride.startedAt) ? new Date(ride.startedAt).toLocaleString() : "Ride"}
+            </Text>
+            <Text style={s.close} onPress={onClose}>Close</Text>
+          </View>
+
+          {hasTrack ? (
+            <RouteMap track={ride.track} />
+          ) : (
+            <Card>
+              <Text style={s.empty}>
+                No route was kept for this ride — it was recorded before the app
+                stored one.
+              </Text>
+            </Card>
+          )}
+
+          <Card style={{ marginTop: 12 }}>
+            <View style={s.statsRow}>
+              <Stat label="Distance" value={(ride.distance / 1000).toFixed(2)} unit="km" />
+              <Stat label="Moving" value={fmtDuration(ride.movingTime)} />
+              <Stat label="Avg" value={(msToKmh(ride.distance / Math.max(ride.movingTime, 1))).toFixed(1)} unit="km/h" />
+            </View>
+            <View style={[s.statsRow, { marginTop: 16 }]}>
+              <Stat label="Top" value={msToKmh(ride.topSpeed || 0).toFixed(1)} unit="km/h" />
+              <Stat label="Climbed" value={Math.round(ride.ascent || 0).toString()} unit="m" />
+              <Stat label="Elapsed" value={fmtDuration(ride.elapsed || 0)} />
+            </View>
+            {ride.energy && Number.isFinite(ride.energy.estimatedRangeKm) && (
+              <View style={[s.statsRow, { marginTop: 16 }]}>
+                <Stat label="Used" value={ride.energy.wh.toFixed(0)} unit="Wh" />
+                <Stat label="Efficiency" value={ride.energy.whPerKm.toFixed(1)} unit="Wh/km" />
+                <Stat label="Real range" value={ride.energy.estimatedRangeKm.toFixed(0)} unit="km" />
+              </View>
+            )}
+            {ride.gaps > 0 && (
+              <Text style={s.warn}>
+                {ride.gaps} gap{ride.gaps > 1 ? "s" : ""} in the signal — the line jumps straight
+                across them, and the distance does not count them.
+              </Text>
+            )}
+          </Card>
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 export default function App() {
   const { state, tracking, mode, error, start, stop, reset } = useRideTracker();
   const [rides, setRides] = useState([]);
@@ -54,6 +121,7 @@ export default function App() {
   // on the stop button meant that number arrived too late every single time —
   // the energy half of the app, unreachable in normal use.
   const [pending, setPending] = useState(null);
+  const [detail, setDetail] = useState(null);
 
   useEffect(() => {
     loadRides().then(setRides);
@@ -132,6 +200,21 @@ export default function App() {
     ]);
   }
 
+  // Development only. Pack health, the trend, lifetime totals and streaks are
+  // all invisible until a history exists, and a fortnight of riding is a slow
+  // way to review a layout. Marked rides, removable in one press.
+  async function onSeedDemo() {
+    const mine = rides.filter((r) => !r.demo);
+    const next = [...buildDemoRides(packWh), ...mine].sort(
+      (a, b) => (b.startedAt || 0) - (a.startedAt || 0),
+    );
+    setRides(await replaceRides(next));
+  }
+
+  async function onClearDemo() {
+    setRides(await replaceRides(rides.filter((r) => !r.demo)));
+  }
+
   function confirmDelete(id) {
     Alert.alert("Delete ride?", "This cannot be undone.", [
       { text: "Cancel", style: "cancel" },
@@ -173,6 +256,9 @@ export default function App() {
               {fmtDuration(shown.elapsed)} elapsed · {fmtDuration(shown.elapsed - shown.movingTime)} stopped
               {shown.ascent >= 1 ? ` · ${Math.round(shown.ascent)} m climbed` : ""}
             </Text>
+          )}
+          {(shown.track?.length ?? 0) > 1 && (
+            <RouteShape track={shown.track} style={{ marginTop: 16 }} />
           )}
           {shown.gaps > 0 && (
             // Said out loud rather than hidden: the distance is short by
@@ -298,9 +384,12 @@ export default function App() {
           rides.map((r) => (
             <Card key={r.id} style={{ marginBottom: 10 }}>
               <View style={s.rideHead}>
-                <Text style={s.rideDate}>
-                  {Number.isFinite(r.startedAt) ? new Date(r.startedAt).toLocaleString() : "Ride"}
-                </Text>
+                <View style={s.rideWhen}>
+                  <Text style={s.rideDate}>
+                    {Number.isFinite(r.startedAt) ? new Date(r.startedAt).toLocaleString() : "Ride"}
+                  </Text>
+                  {r.demo && <Pill>demo</Pill>}
+                </View>
                 <Text style={s.del} onPress={() => confirmDelete(r.id)}>Delete</Text>
               </View>
               <View style={s.statsRow}>
@@ -315,12 +404,21 @@ export default function App() {
                   <Stat label="Real range" value={r.energy.estimatedRangeKm.toFixed(0)} unit="km" />
                 </View>
               )}
+              {(r.track?.length ?? 0) > 1 && (
+                // The outline only. Twenty of these scroll past in a list, and
+                // twenty maps would be twenty times the tiles for a picture you
+                // recognise from its shape anyway.
+                <Pressable onPress={() => setDetail(r)}>
+                  <RouteShape track={r.track} style={{ marginTop: 14 }} />
+                  <Text style={s.tapHint}>Tap for the map</Text>
+                </Pressable>
+              )}
             </Card>
           ))
         )}
 
         <SectionTitle>Scooter</SectionTitle>
-        <Card style={{ marginBottom: 40 }}>
+        <Card style={{ marginBottom: __DEV__ ? 10 : 40 }}>
           <View style={s.batteryRow}>
             <Text style={s.batteryLabel}>Battery pack</Text>
             <TextInput
@@ -340,7 +438,25 @@ export default function App() {
             Usually printed on the deck or in the manual — e.g. 36V × 10.4Ah ≈ 374 Wh.
           </Text>
         </Card>
+
+        {__DEV__ && (
+          <>
+            <SectionTitle>Development</SectionTitle>
+            <Card style={{ marginBottom: 40 }}>
+              <Button title="Seed demo rides" tone="ghost" onPress={onSeedDemo} />
+              <View style={{ marginTop: 8 }}>
+                <Button title="Remove demo rides" tone="ghost" onPress={onClearDemo} />
+              </View>
+              <Text style={s.hint}>
+                Nine invented rides over six weeks, with the pack fading as it goes.
+                They are marked, they never touch your own, and this card does not
+                exist in a release build.
+              </Text>
+            </Card>
+          </>
+        )}
       </ScrollView>
+      <RideDetail ride={detail} onClose={() => setDetail(null)} />
     </SafeAreaView>
   );
 }
@@ -358,10 +474,14 @@ const s = StyleSheet.create({
   warn: { color: T.accent, fontSize: 11, marginTop: 8 },
   error: { color: T.danger, fontSize: 13, marginTop: 10 },
   empty: { color: T.dim, fontSize: 13, lineHeight: 19 },
-  rideHead: { flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
+  rideHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  rideWhen: { flexDirection: "row", alignItems: "center", gap: 8 },
   rideDate: { color: T.dim, fontSize: 12 },
   del: { color: T.danger, fontSize: 12, fontWeight: "700" },
   count: { color: T.dim, fontSize: 12 },
+  detailTitle: { color: T.text, fontSize: 18, fontWeight: "800" },
+  close: { color: T.accent, fontSize: 14, fontWeight: "700" },
+  tapHint: { color: T.dim, fontSize: 10, marginTop: 6, textAlign: "right" },
   batteryRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
   batteryLabel: { color: T.text, fontSize: 14, flex: 1 },
   batteryField: {

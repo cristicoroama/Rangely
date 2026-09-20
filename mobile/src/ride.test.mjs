@@ -11,6 +11,8 @@ import {
   msToKmh, fmtDuration, fmtDistance, isUsable, packHealth, totals, streakDays,
   MAX_GAP_S, TRACK_SPACING_M,
 } from "./ride.js";
+import { buildDemoRides } from "./demoRides.js";
+import { TILE, fitView, latToY, lonToX, projectTrack, tilesFor, trackBounds } from "./slippy.js";
 
 let failures = 0;
 const show = (v) => (typeof v === "object" ? JSON.stringify(v) : String(v));
@@ -274,6 +276,61 @@ console.log("\nstreak");
   check("last week does not", streakDays([{startedAt:at(6)}], now), 0);
   check("a ride at 01:00 belongs to that day",
     streakDays([{startedAt:at(0,1)},{startedAt:at(1,23)}], now), 2);
+}
+
+console.log("\nmap projection");
+{
+  // The numbers every tile server on earth agrees on.
+  check("west edge of the world", lonToX(-180, 0), 0, 1e-12);
+  check("east edge", lonToX(180, 0), 1, 1e-12);
+  check("greenwich at zoom 1", lonToX(0, 1), 1, 1e-12);
+  check("the equator is halfway down", latToY(0, 5), 16, 1e-9);
+  check("mercator stops at 85°", latToY(85.0511, 0), 0, 0.0001);
+
+  check("a single point is not a route", trackBounds([[44, 26]]), null);
+  check("nor is nothing", trackBounds([]), null);
+  check("rubbish points are ignored", trackBounds([[44, 26], [NaN, 26], [45, 27]]).maxLat, 45);
+
+  const square = [[44.43, 26.10], [44.44, 26.10], [44.44, 26.12], [44.43, 26.12], [44.43, 26.10]];
+  const view = fitView(square, 300, 200, { padding: 10 });
+  const xy = projectTrack(square, view).split(" ").map((p) => p.split(",").map(Number));
+  check("every fix lands inside the box",
+    xy.every(([x, y]) => x >= 0 && x <= 300 && y >= 0 && y <= 200), true);
+  check("and inside the padding",
+    xy.every(([x, y]) => x >= 9 && x <= 291 && y >= 9 && y <= 191), true);
+  check("the route is drawn as large as it fits",
+    Math.max(...xy.map((p) => p[0])) - Math.min(...xy.map((p) => p[0])) > 150, true);
+
+  // A ride ten times longer has to be drawn from further away.
+  const wide = [[44.0, 25.0], [45.0, 27.0]];
+  check("a longer ride zooms out", fitView(wide, 300, 200).zoom < view.zoom, true);
+  check("no view without a box", fitView(square, 0, 200), null);
+
+  const tiles = tilesFor(view);
+  check("the view is covered by tiles", tiles.length >= 1, true);
+  check("tiles start at or before the left edge", tiles[0].left <= 0, true);
+  check("tile spacing is one tile", tiles.length < 2 || tiles.some((t) => t.left === tiles[0].left + TILE || t.top === tiles[0].top + TILE), true);
+  check("a runaway view cannot flood a tile server",
+    tilesFor({ zoom: 12, originX: 0, originY: 0, width: 99999, height: 99999 }).length <= 30, true);
+}
+
+console.log("\ndemo history");
+{
+  // The development seed is data the screens are judged against, so it has to
+  // be data the app could actually have produced.
+  const now = new Date(2026, 0, 15, 18, 0, 0).getTime();
+  const demo = buildDemoRides(500, now);
+  check("every demo ride has energy", demo.every((r) => r.energy), true);
+  check("stored newest first", demo[0].startedAt > demo[demo.length - 1].startedAt, true);
+  check("all marked as demo", demo.every((r) => r.demo === true), true);
+  const h = packHealth(demo);
+  check("the seed shows a fading pack", h.fadePct > 10 && h.fadePct < 35, true);
+  check("and enough samples to say so", h.samples >= 6, true);
+  check("it leaves a streak to show", streakDays(demo, now) >= 2, true);
+  check("every demo ride has a route to draw", demo.every((r) => r.track.length > 20), true);
+  check("and the routes are real places", demo.every((r) => trackBounds(r.track) !== null), true);
+  check("pack size is respected", buildDemoRides(250, now)[0].energy.usedPct >
+    buildDemoRides(1000, now)[0].energy.usedPct, true);
 }
 
 console.log("\nformatting");

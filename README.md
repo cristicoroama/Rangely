@@ -15,6 +15,7 @@ Early. Foreground ride recording works and can be tried on a phone today.
 - [x] Ride recording — distance, moving time, average and top speed, ascent
 - [x] Energy — Wh used, Wh/km, measured full range
 - [x] Local history and lifetime totals
+- [x] Route map — the ride drawn on OpenStreetMap tiles
 - [x] Pack health — measured range now against measured range when you started
 - [x] Background tracking — runs in a development build, falls back in Expo Go
 - [ ] Accounts and a server
@@ -41,6 +42,42 @@ npm start          # then scan the QR code with Expo Go on Android
 
 `npm test` runs the ride maths against a set of synthetic tracks. No test
 runner, no toolchain — plain Node, so it works before anything is set up.
+
+It also runs in a browser, which is the quickest way to look at the screens on
+a desktop. Recording is useless there — a laptop locates itself by wifi, to
+within a few hundred metres, and every one of those fixes is thrown out — but
+the layout is the layout:
+
+```bash
+npx expo install react-dom react-native-web @expo/metro-runtime
+npx expo start --web
+```
+
+A development build also carries a **Development** card at the bottom of the
+screen with a demo history behind it: nine invented rides over six weeks, with
+the pack fading as it goes, so pack health, the trend, lifetime totals and
+streaks can be judged without a fortnight of riding first. The rides are
+marked, removable in one press, and the card does not exist in a release build.
+
+## The map
+
+Every ride keeps a thinned track — a point every ten metres, which is shape
+enough to draw and small enough to store — and it is drawn twice. The ride list
+gets the outline alone: no tiles, no network, no waiting, and you recognise a
+ride by its shape long before you recognise it by its distance. Tapping one
+opens it full width on real streets.
+
+There is no map library. Picking a zoom that fits a track, working out which
+tiles cover the view and putting a latitude and longitude on a pixel is four
+formulas that have not changed since 2005 — `src/slippy.js`, fifty lines, pure
+and tested — and that is a better trade than a native dependency with an API
+key, a quota and a billing account behind it. Tiles come from OpenStreetMap,
+where attribution is the whole of the licence.
+
+What that buys: no Google Cloud project, no key in the repo, and the map works
+in Expo Go. What it costs: the map is static. There is no panning, no zooming
+and no live map while you ride — the live screen shows the outline as it grows,
+which is the part that tells you anything at 20 km/h.
 
 ## Background tracking
 
@@ -72,6 +109,9 @@ mobile/
     ride.test.mjs         tests for it
     useRideTracker.js     owns the GPS subscription, foreground or background
     backgroundLocation.js the TaskManager task and its permissions
+    slippy.js             web mercator — zoom, tiles, projection
+    map.js                the route, as an outline and on tiles
+    demoRides.js          invented history for the development seed
     storage.js            local persistence
     ui.js, theme.js       presentation
 ```
