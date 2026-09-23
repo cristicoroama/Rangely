@@ -8,7 +8,7 @@ import { DUR } from "../motion";
 import { Button, Card, Icon, IconTile, Pill, Press, SectionTitle, Txt, themed } from "../ui";
 import { HeroPanel } from "../components/Gradient";
 import { ScooterArt } from "../components/ScooterArt";
-import { DisplayList, ScooterList } from "../components/ScooterPicker";
+import { DisplayList, ScooterList, SpeedNote } from "../components/ScooterPicker";
 import { OTHER, findScooter } from "../scooters";
 import { AGE_BRACKETS, LOCAL, needsHelmetByLaw } from "../rules";
 import { useKeyboardHeight } from "../useKeyboard";
@@ -114,6 +114,7 @@ export function ScooterScreen({
       model: m.key,
       name: m.key === OTHER.key ? (preset ? "My scooter" : scooter.name) : m.name,
       packWh: m.key === OTHER.key ? scooter.packWh : m.packWh,
+      display: m.key === OTHER.key ? scooter.display : m.display ?? scooter.display,
     });
   };
 
@@ -146,6 +147,7 @@ export function ScooterScreen({
               <Icon name="chevron" size={16} color={t.gradInk} strokeWidth={2.6} />
             </Press>
           </View>
+          <SpeedNote model={scooter.model} onHero style={{ marginTop: 14 }} />
         </HeroPanel>
       </Animated.View>
 

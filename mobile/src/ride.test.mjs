@@ -14,7 +14,7 @@ import {
 } from "./ride.js";
 import { weekStart, weeklyProgress, recentWeeks } from "./goals.js";
 import { daylight, isAfterDark, needsHelmetByLaw, LOCAL } from "./rules.js";
-import { SCOOTERS, findScooter, displayResolution } from "./scooters.js";
+import { BRANDS, DISPLAYS, SCOOTERS, findDisplay, findScooter, displayResolution, overLegalSpeed, scootersOf } from "./scooters.js";
 import { buildDemoRides } from "./demoRides.js";
 import { LEVELS, riderLevel, goalStreak, badges, newlyEarned } from "./achievements.js";
 import { TILE, fitView, latToY, lonToX, projectTrack, tilesFor, trackBounds } from "./slippy.js";
@@ -361,11 +361,21 @@ console.log("\nrules");
 
 console.log("\nscooters");
 {
-  check("presets carry a pack size", SCOOTERS.every((s) => s.packWh > 200 && s.packWh < 1000), true);
+  check("presets carry a pack size", SCOOTERS.every((s) => s.packWh > 200 && s.packWh < 6000), true);
+  check("every preset has a known brand", SCOOTERS.every((s) => BRANDS.includes(s.brand)), true);
+  check("every preset has a known display", SCOOTERS.every((s) => displayResolution(s.display) === findDisplay(s.display).resolution && DISPLAYS.some((d) => d.key === s.display)), true);
+  check("keys are unique", new Set(SCOOTERS.map((s) => s.key)).size, SCOOTERS.length);
   check("found by key", findScooter("segway-g30").packWh, 551);
   check("unknown key", findScooter("nope"), null);
-  check("bars are coarse", displayResolution("bars"), 20);
+  check("G2 Max is its real 48 V × 20.8 Ah", findScooter("kukirin-g2-max").packWh, Math.round(48 * 20.8));
+  check("KuKirin shows ten bars", scootersOf("KuKirin").every((s) => s.display === "bars10"), true);
+  check("a Dualtron is over the legal limit", overLegalSpeed(findScooter("dualtron-mini")), true);
+  check("a Xiaomi is not", overLegalSpeed(findScooter("xiaomi-4-pro-2")), false);
+  check("five bars are coarse", displayResolution("bars"), 20);
+  check("ten bars, half as coarse", displayResolution("bars10"), 10);
   check("the app is exact", displayResolution("app"), 1);
+  check("a ten-bar ride needs 20% to count", isEnergySample({ distance: 5000, energy: energyStats({ batteryStart: 80, batteryEnd: 70, packWh: 749, distanceM: 5000, resolution: 10 }) }), false);
+  check("…and counts at 20%", isEnergySample({ distance: 9000, energy: energyStats({ batteryStart: 80, batteryEnd: 60, packWh: 749, distanceM: 9000, resolution: 10 }) }), true);
 }
 
 console.log("\nmap projection");

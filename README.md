@@ -219,7 +219,12 @@ The research behind it is in the dossier; the short version:
   end of a ride sit on a deep, lit "hero" panel that is dark in both themes.
 - **Nothing to type.** The battery is a battery you drag, with − and + for
   the last percent and one-tap answers ("Full", "where the last ride ended").
-  A scooter that shows five bars gets five bars to tap instead.
+  A scooter that shows bars gets the same battery cut into segments — five
+  for a Xiaomi or Segway dashboard, ten for a KuKirin — snapping bar by bar.
+- **Your scooter by name.** Presets for Xiaomi, Segway, NIU, Navee, KuKirin
+  and Dualtron, a brand at a time, with the pack size worked out as volts ×
+  amp-hours rather than copied from listings. Models that leave the factory
+  faster than 25 km/h get one plain note about what that means in Romania.
 - **Ask with a reason.** Before Android's location dialog, a sheet says why
   and what to choose — a denied location is the one thing that breaks the app.
 - **Levels and badges, never speed.** Levels come from lifetime distance;

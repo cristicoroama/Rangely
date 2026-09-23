@@ -8,6 +8,7 @@ import { haptic } from "../haptics";
 import { Icon, Press, Txt } from "../ui";
 import { GradientFill } from "./Gradient";
 import { parsePercent } from "../ride";
+import { findDisplay } from "../scooters";
 
 const clamp = (v) => Math.max(0, Math.min(100, Math.round(v)));
 
@@ -29,8 +30,12 @@ function levelColors(t, n) {
  * ten percent. Empty until touched — "not entered" and "0%" are different
  * things, and an energy figure built on a pretend zero would be a lie.
  */
-function BatterySlider({ value, onChange, label }) {
+function BatterySlider({ value, onChange, label, bars = 0 }) {
   const t = useTheme();
+  // With a bar display the battery snaps to whole bars and is drawn in
+  // segments, exactly like the handlebar it is copied from.
+  const step = bars ? 100 / bars : 1;
+  const snap = (v) => Math.round(v / step) * step;
   const n = parsePercent(value);
   const has = Number.isFinite(n);
   const width = useRef(1);
@@ -43,8 +48,9 @@ function BatterySlider({ value, onChange, label }) {
   change.current = onChange;
 
   const set = (v) => {
-    const c = clamp(v);
-    if (last.current == null || Math.floor(c / 10) !== Math.floor(last.current / 10)) haptic.tap();
+    const c = clamp(snap(v));
+    if (last.current === c) return;
+    if (bars || last.current == null || Math.floor(c / 10) !== Math.floor(last.current / 10)) haptic.tap();
     last.current = c;
     change.current(String(c));
   };
@@ -72,14 +78,14 @@ function BatterySlider({ value, onChange, label }) {
   const colors = levelColors(t, n);
   const level = useSharedValue(has ? n : 0);
   useEffect(() => {
-    level.value = withSpring(has ? Math.max(n, 3) : 0, SPRING.snappy);
-  }, [has, n, level]);
+    level.value = withSpring(has ? (bars ? n : Math.max(n, 3)) : 0, SPRING.snappy);
+  }, [has, n, level, bars]);
   const fill = useAnimatedStyle(() => ({ width: `${level.value}%` }));
 
   return (
     <View style={styles.sliderRow}>
       <Press
-        onPress={() => set((has ? n : 51) - 1)}
+        onPress={() => set((has ? n : 50 + step) - step)}
         feel="tap"
         accessibilityLabel={`${label}: one less`}
         style={[styles.nudge, { backgroundColor: t.surface2 }]}
@@ -110,8 +116,22 @@ function BatterySlider({ value, onChange, label }) {
           <Animated.View style={[styles.fill, fill]} pointerEvents="none">
             <GradientFill colors={colors} dir="across" />
           </Animated.View>
+          {bars ? (
+            <View style={styles.segments} pointerEvents="none">
+              {Array.from({ length: bars - 1 }, (_, i) => (
+                <View key={i} style={[styles.segLine, { left: `${((i + 1) * 100) / bars}%`, backgroundColor: t.surface }]} />
+              ))}
+            </View>
+          ) : null}
           <View style={styles.center} pointerEvents="none">
-            {has ? (
+            {has && bars ? (
+              <View style={[styles.barBadge, { backgroundColor: t.surface }]}>
+                <Text style={[styles.barText, { color: t.text }]}>
+                  {Math.round(n / step)}
+                  <Text style={[styles.barOf, { color: t.text3 }]}> / {bars} bars</Text>
+                </Text>
+              </View>
+            ) : has ? (
               <Text style={[styles.pctText, { color: t.text }]}>
                 {n}
                 <Text style={styles.pctSign}>%</Text>
@@ -128,7 +148,7 @@ function BatterySlider({ value, onChange, label }) {
       </View>
 
       <Press
-        onPress={() => set((has ? n : 49) + 1)}
+        onPress={() => set((has ? n : 50 - step) + step)}
         feel="tap"
         accessibilityLabel={`${label}: one more`}
         style={[styles.nudge, { backgroundColor: t.surface2 }]}
@@ -172,9 +192,11 @@ function Suggestions({ items, value, onChange }) {
 
 /**
  * The two numbers the whole app runs on, asked for the way the rider reads
- * them. A scooter that shows a percentage gets the battery to drag; one that
- * shows five bars gets five bars to tap — asking someone to convert bars to a
- * percentage in their head is how the energy half of the app gets skipped.
+ * them. A scooter that shows a percentage gets the battery to drag by the
+ * percent; one that shows bars — five on a Xiaomi, ten on a KuKirin — gets
+ * the same battery cut into that many segments, snapping bar by bar. Asking
+ * someone to convert bars to a percentage in their head is how the energy
+ * half of the app gets skipped.
  *
  * The value is always a percentage string either way, so everything
  * downstream stays the same.
@@ -182,46 +204,12 @@ function Suggestions({ items, value, onChange }) {
 export function BatteryField({ label, value, onChange, display = "app", hint, suggestions }) {
   const t = useTheme();
 
-  if (display === "bars") {
-    const bars = Number.isFinite(parsePercent(value)) ? Math.round(parsePercent(value) / 20) : null;
-    return (
-      <View style={styles.wrap}>
-        <Txt role="strong">{label}</Txt>
-        <View style={styles.barsRow} accessibilityRole="radiogroup" accessibilityLabel={label}>
-          {[0, 1, 2, 3, 4, 5].map((k) => {
-            const on = bars === k;
-            return (
-              <Press
-                key={k}
-                onPress={() => onChange(String(k * 20))}
-                feel="tap"
-                accessibilityRole="radio"
-                accessibilityLabel={`${k} bar${k === 1 ? "" : "s"}`}
-                outerStyle={{ flex: 1 }}
-                style={[
-                  styles.barChip,
-                  { backgroundColor: on ? t.accentWash : t.surface2, borderColor: on ? t.accent : "transparent" },
-                ]}
-              >
-                <View style={styles.glyph}>
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <View key={i} style={[styles.cell, { backgroundColor: i < k ? (on ? t.accent : t.text2) : t.line }]} />
-                  ))}
-                </View>
-                <Text style={[styles.barNum, { color: on ? t.accent : t.text2 }]}>{k}</Text>
-              </Press>
-            );
-          })}
-        </View>
-        {hint ? <Txt role="small">{hint}</Txt> : null}
-      </View>
-    );
-  }
+  const bars = findDisplay(display).bars ?? 0;
 
   return (
     <View style={styles.wrap}>
       <Txt role="strong">{label}</Txt>
-      <BatterySlider value={value} onChange={onChange} label={label} />
+      <BatterySlider value={value} onChange={onChange} label={label} bars={bars} />
       <Suggestions items={suggestions} value={value} onChange={onChange} />
       {hint ? (
         <View style={styles.hintLine}>
@@ -250,9 +238,9 @@ const styles = StyleSheet.create({
   chip: { minHeight: 40, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1.5, justifyContent: "center" },
   chipText: { fontFamily: F.semi, fontSize: 14 },
   hintLine: { flexDirection: "row", alignItems: "center", gap: 6 },
-  barsRow: { flexDirection: "row", gap: 8 },
-  barChip: { minHeight: 64, borderRadius: 14, borderWidth: 2, alignItems: "center", justifyContent: "center", gap: 6 },
-  glyph: { flexDirection: "row", gap: 2 },
-  cell: { width: 4, height: 12, borderRadius: 1 },
-  barNum: { fontSize: 15, fontFamily: F.heavy },
+  segments: { ...StyleSheet.absoluteFillObject },
+  segLine: { position: "absolute", top: 0, bottom: 0, width: 3, marginLeft: -1.5 },
+  barBadge: { paddingHorizontal: 10, paddingVertical: 2, borderRadius: 10, opacity: 0.94 },
+  barText: { fontFamily: F.numHeavy, fontSize: 26, lineHeight: 30, fontVariant: ["tabular-nums"], includeFontPadding: false },
+  barOf: { fontFamily: F.num, fontSize: 17 },
 });

@@ -21,7 +21,7 @@ import { Button, Icon, IconTile, Txt, themed } from "../ui";
 import { HeroPanel } from "../components/Gradient";
 import { ScooterArt } from "../components/ScooterArt";
 import { Choice } from "../components/Choice";
-import { DisplayList, ScooterList } from "../components/ScooterPicker";
+import { DisplayList, ScooterList, SpeedNote } from "../components/ScooterPicker";
 import { OTHER } from "../scooters";
 import { AGE_BRACKETS, LOCAL } from "../rules";
 import { DEFAULT_GOAL_KM } from "../goals";
@@ -123,8 +123,9 @@ function Scooter({ model, display, onModel, onDisplay, onDone }) {
         <Text style={s.h1}>Which scooter?</Text>
         <Txt style={s.sub}>This fills in its battery size. Not listed? Pick “Another scooter”.</Txt>
         <View style={{ marginTop: 22 }}>
-          <ScooterList value={model} onPick={onModel} />
+          <ScooterList value={model} onPick={onModel} bleed={0} />
         </View>
+        <SpeedNote model={model} style={{ marginTop: 12 }} />
         <Text style={[s.h2, { marginTop: 28 }]}>How does it show the battery?</Text>
         <Txt style={s.sub}>So you can type it in the same way after a ride.</Txt>
         <View style={{ marginTop: 14 }}>
@@ -198,7 +199,11 @@ export function OnboardingScreen({ onDone }) {
       key="s"
       model={model?.key}
       display={display}
-      onModel={setModel}
+      onModel={(m) => {
+        setModel(m);
+        // The model knows how its dashboard shows the battery.
+        if (m.display) setDisplay(m.display);
+      }}
       onDisplay={setDisplay}
       onDone={finish}
     />,
