@@ -12,8 +12,21 @@ import { totals } from "./ride";
  */
 const RIDES_KEY = "rangely.rides.v1";
 const SCOOTER_KEY = "rangely.scooter.v1";
+const PROFILE_KEY = "rangely.profile.v1";
 
-const DEFAULT_SCOOTER = { name: "My scooter", packWh: 500 };
+/**
+ * `model` is a preset key from scooters.js (or "other"), `display` is how the
+ * scooter shows its charge — "app", "number" or "bars" — which decides both
+ * how the battery is asked for and how much a reading can be trusted.
+ */
+export const DEFAULT_SCOOTER = { name: "My scooter", model: null, packWh: 500, display: "app" };
+
+/**
+ * Who is riding, at the level the app needs and no further: an age bracket
+ * (which rules apply), a weekly goal, and whether the three opening screens
+ * have been seen. No name, no birth date, no account.
+ */
+export const DEFAULT_PROFILE = { onboarded: false, ageBracket: null, goalKm: 25 };
 
 export async function loadRides() {
   try {
@@ -68,6 +81,20 @@ export async function loadScooter() {
 export async function saveScooter(s) {
   await AsyncStorage.setItem(SCOOTER_KEY, JSON.stringify(s));
   return s;
+}
+
+export async function loadProfile() {
+  try {
+    const raw = await AsyncStorage.getItem(PROFILE_KEY);
+    return raw ? { ...DEFAULT_PROFILE, ...JSON.parse(raw) } : { ...DEFAULT_PROFILE };
+  } catch {
+    return { ...DEFAULT_PROFILE };
+  }
+}
+
+export async function saveProfile(p) {
+  await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(p));
+  return p;
 }
 
 // Totals are ride maths, and they live with the rest of it so they can be

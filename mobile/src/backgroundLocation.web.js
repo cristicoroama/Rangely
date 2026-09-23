@@ -11,6 +11,14 @@ export const RIDE_TASK = "rangely-ride-location";
 
 export function setSink() {}
 
+export async function hasBackgroundPermission() {
+  return false;
+}
+
+export async function requestBackgroundPermission() {
+  return false;
+}
+
 export async function startBackground() {
   return false;
 }

@@ -8,10 +8,15 @@
  */
 import {
   addPoint, emptyRide, avgSpeed, haversine, energyStats, parsePercent,
-  msToKmh, fmtDuration, fmtDistance, isUsable, packHealth, totals, streakDays,
+  msToKmh, fmtDuration, fmtDistance, isUsable, packHealth, totals,
+  isEnergySample, pauseRide, currentSpeed,
   MAX_GAP_S, TRACK_SPACING_M,
 } from "./ride.js";
+import { weekStart, weeklyProgress, recentWeeks } from "./goals.js";
+import { daylight, isAfterDark, needsHelmetByLaw, LOCAL } from "./rules.js";
+import { SCOOTERS, findScooter, displayResolution } from "./scooters.js";
 import { buildDemoRides } from "./demoRides.js";
+import { LEVELS, riderLevel, goalStreak, badges, newlyEarned } from "./achievements.js";
 import { TILE, fitView, latToY, lonToX, projectTrack, tilesFor, trackBounds } from "./slippy.js";
 
 let failures = 0;
@@ -187,6 +192,7 @@ console.log("\nenergy — the reason the app exists");
   check("watt-hours used", e.wh, 250, 0.01);
   check("Wh per km", e.whPerKm, 10, 0.01);
   check("measured full range", e.estimatedRangeKm, 50, 0.01);
+  check("km per 1% of battery", e.kmPerPct, 0.5, 0.0001);
   check("charged mid-ride rejected", energyStats({batteryStart:40,batteryEnd:90,packWh:500,distanceM:1000}), null);
   check("no pack size, no answer", energyStats({batteryStart:100,batteryEnd:50,distanceM:1000}), null);
 
@@ -211,38 +217,61 @@ console.log("\nenergy — the reason the app exists");
 
 console.log("\npack health");
 {
-  const mk = (daysAgo, rangeKm, { usedPct = 50, distance = 20000 } = {}) => ({
-    id: String(daysAgo),
-    startedAt: START_T - daysAgo * 86400000,
-    distance,
-    movingTime: 3600,
-    energy: { usedPct, wh: 250, whPerKm: 500 / rangeKm, estimatedRangeKm: rangeKm },
-  });
+  // A ride that used `usedPct` of a pack and covered `km` — the range it
+  // implies is 100 × km ÷ usedPct, so each ride here states its own range.
+  const mk = (daysAgo, rangeKm, { usedPct = 50, resolution = 1 } = {}) => {
+    const km = (rangeKm * usedPct) / 100;
+    return {
+      id: String(daysAgo),
+      startedAt: START_T - daysAgo * 86400000,
+      distance: km * 1000,
+      movingTime: 3600,
+      energy: {
+        usedPct, resolution, wh: 250, whPerKm: 500 / rangeKm,
+        estimatedRangeKm: rangeKm, kmPerPct: km / usedPct,
+      },
+    };
+  };
 
-  check("nothing to say about one ride", packHealth([mk(1, 50)]), null);
+  check("no rides, nothing to say", packHealth([]), null);
 
-  // Newest first, as stored: three recent rides at 48 km, three old ones at 60.
-  const h = packHealth([mk(1,48), mk(2,48), mk(3,48), mk(40,60), mk(41,60), mk(42,60)]);
+  // Seven recent rides at 48 km and seven old ones at 60, 50% each: two
+  // windows of 350 battery points that share no ride.
+  const recent = [1, 2, 3, 4, 5, 6, 7].map((d) => mk(d, 48));
+  const old = [40, 41, 42, 43, 44, 45, 46].map((d) => mk(d, 60));
+  const h = packHealth([...recent, ...old]);
   check("range now", h.current.rangeKm, 48, 0.01);
   check("range when the record started", h.baseline.rangeKm, 60, 0.01);
-  check("fade", h.fadePct, 20, 0.01);
+  check("health is now against then", h.healthPct, 80, 0.01);
+  check("rounded to 5%", h.healthRounded, 80);
+  check("and banded", h.band, "normal");
   check("trend runs oldest to newest", h.trend[0].rangeKm, 60, 0.01);
-  check("trend ends at the latest ride", h.trend[h.trend.length - 1].rangeKm, 48, 0.01);
 
-  // Too few rides to compare a "now" against a "then" without the two windows
-  // being made of the same rides.
-  const few = packHealth([mk(1,48), mk(2,52), mk(3,50)]);
-  check("no fade claimed from overlapping windows", few.fadePct, null);
-  check("but a current figure is still given", few.current.rangeKm > 0, true);
+  // Not enough riding for two separate windows: a current range, no verdict.
+  const few = packHealth([mk(1, 48), mk(2, 52), mk(3, 50)]);
+  check("a current range from a few rides", few.current.rangeKm > 0, true);
+  check("but no health claimed yet", few.healthPct, null);
+  check("and it says how much more riding it needs", few.needPct, 450);
 
-  // One percent over 400 metres is not a measurement, and must not be allowed
-  // to declare a battery dead.
-  const noisy = packHealth([
-    mk(1, 5, { usedPct: 1, distance: 400 }), mk(2, 48), mk(3, 48), mk(4, 48),
-    mk(40, 60), mk(41, 60), mk(42, 60),
-  ]);
-  check("imprecise rides are not samples", noisy.samples, 6);
-  check("and do not move the figure", noisy.current.rangeKm, 48, 0.01);
+  // Pooling weights rides by the battery they used: a 60% ride at 40 km and a
+  // 12% ride at 80 km are 52.2 km pooled, not the 60 km a plain average says.
+  const pooled = packHealth([mk(1, 40, { usedPct: 60 }), mk(2, 80, { usedPct: 12 })]);
+  check("rides are pooled by battery used", pooled.current.rangeKm, (100 * (24 + 9.6)) / 72, 0.01);
+
+  // One percent over 400 metres is not a measurement.
+  check("tiny rides are not samples", isEnergySample(mk(1, 40, { usedPct: 1 })), false);
+  check("9% is still under the line", isEnergySample(mk(1, 40, { usedPct: 9 })), false);
+  check("10% over 2 km is", isEnergySample(mk(1, 40, { usedPct: 10 })), true);
+  // Five bars: one bar either way is 20 points, so a ride needs 40.
+  check("one bar is not a measurement", isEnergySample(mk(1, 40, { usedPct: 20, resolution: 20 })), false);
+  check("two bars are", isEnergySample(mk(1, 40, { usedPct: 40, resolution: 20 })), true);
+
+  const bands = [[95, "good"], [85, "normal"], [75, "worn"], [60, "check"]].map(([pct, want]) => {
+    const now = [1, 2, 3, 4, 5, 6, 7].map((d) => mk(d, pct));
+    const then = [40, 41, 42, 43, 44, 45, 46].map((d) => mk(d, 100));
+    return packHealth([...now, ...then]).band === want;
+  });
+  check("every band is reachable", bands.every(Boolean), true);
 }
 
 console.log("\nlifetime totals");
@@ -258,24 +287,85 @@ console.log("\nlifetime totals");
   check("empty history", totals([]).rides, 0);
 }
 
-console.log("\nstreak");
+console.log("\nweekly goal");
 {
-  const now = new Date(2026, 0, 15, 20, 0, 0).getTime();
-  const at = (d, h = 12) => new Date(2026, 0, 15 - d, h, 0, 0).getTime();
+  // Wednesday 16 September 2026, early evening.
+  const now = new Date(2026, 8, 16, 18, 0, 0).getTime();
+  const on = (y, m, d, h = 12) => new Date(y, m, d, h, 0, 0).getTime();
+  const ride = (t, km) => ({ startedAt: t, distance: km * 1000 });
 
-  check("no rides, no streak", streakDays([], now), 0);
-  check("today alone is a streak of one", streakDays([{ startedAt: at(0) }], now), 1);
-  check("three days running", streakDays([{startedAt:at(0)},{startedAt:at(1)},{startedAt:at(2)}], now), 3);
-  check("two rides in one day do not double it",
-    streakDays([{startedAt:at(0,7)},{startedAt:at(0,19)},{startedAt:at(1)}], now), 2);
-  check("a missed day ends it",
-    streakDays([{startedAt:at(0)},{startedAt:at(2)},{startedAt:at(3)}], now), 1);
-  // Judged before the day is over, a streak that dies at midnight punishes you
-  // for looking at the screen in the morning.
-  check("yesterday still counts", streakDays([{startedAt:at(1)},{startedAt:at(2)}], now), 2);
-  check("last week does not", streakDays([{startedAt:at(6)}], now), 0);
-  check("a ride at 01:00 belongs to that day",
-    streakDays([{startedAt:at(0,1)},{startedAt:at(1,23)}], now), 2);
+  check("weeks start on Monday", weekStart(now), new Date(2026, 8, 14).getTime());
+  check("Sunday belongs to the week before it",
+    weekStart(on(2026, 8, 20, 23)), new Date(2026, 8, 14).getTime());
+
+  const rides = [
+    ride(on(2026, 8, 14, 8), 6),   // Monday
+    ride(on(2026, 8, 16, 7), 8.5), // today
+    ride(on(2026, 8, 13, 20), 30), // last Sunday — last week
+  ];
+  const w = weeklyProgress(rides, 25, now);
+  check("counts only this week", w.km, 14.5, 0.001);
+  check("rides this week", w.rides, 2);
+  check("fraction of the goal", w.fraction, 0.58, 0.001);
+  check("not met yet", w.met, false);
+  check("Wednesday leaves five days, today included", w.daysLeft, 5);
+  check("the ring never overflows", weeklyProgress([ride(on(2026, 8, 15), 60)], 25, now).fraction, 1);
+  check("a missing goal falls back to the default", weeklyProgress(rides, 0, now).goalKm, 25);
+
+  const weeks = recentWeeks(rides, 25, now, 3);
+  check("recent weeks, oldest first", weeks.map((x) => Math.round(x.km)), [0, 30, 15]);
+  check("a met week is marked", weeks[1].met, true);
+}
+
+console.log("\npause");
+{
+  let s = ride(Array(10).fill(5));
+  const before = s.distance;
+  s = pauseRide(s);
+  // Two minutes later, 600 m away: the rider walked it. Not ridden, and not a
+  // signal gap either.
+  s = addPoint(s, { lat: 44.43, lon: s.last.lon + 600 / (111_320 * Math.cos((44.43 * Math.PI) / 180)), t: s.last.t + 120_000, accuracy: 5, alt: 80 });
+  check("a pause adds no distance", s.distance, before, 0.01);
+  check("and is not a signal gap", s.gaps, 0);
+  check("riding resumes normally", s.needsAnchor, false);
+  const t0 = s.last.t;
+  s = addPoint(s, { lat: 44.43, lon: s.last.lon + 5 / (111_320 * Math.cos((44.43 * Math.PI) / 180)), t: t0 + 1000, accuracy: 5, alt: 80 });
+  check("the next metre counts again", s.distance > before + 4, true);
+}
+
+console.log("\nlive speed");
+{
+  check("zero before any movement", currentSpeed(emptyRide()), 0);
+  check("smoothed like top speed", msToKmh(currentSpeed(ride(Array(5).fill(7)))), 25.2, 0.05);
+}
+
+console.log("\nrules");
+{
+  check("minimum age in Romania", LOCAL.minAge, 14);
+  check("helmet by law for 14–15", needsHelmetByLaw("14-15"), true);
+  check("not by law at 16", needsHelmetByLaw("16-17"), false);
+  // Checked against published Bucharest times; the process runs in UTC here,
+  // so these are only meaningful when TZ is Europe/Bucharest (npm test sets
+  // nothing — the check below skips itself otherwise).
+  const inRomania = new Date(2026, 5, 21, 12).getTimezoneOffset() === -180;
+  if (inRomania) {
+    const d = daylight(new Date(2026, 5, 21).getTime());
+    check("midsummer sunset near 21:02", d.sunset, 21.03, 0.25);
+    check("dark at 21:30 in June", isAfterDark(new Date(2026, 5, 21, 21, 30).getTime()), true);
+    check("light at 16:00 in December", isAfterDark(new Date(2026, 11, 21, 16, 0).getTime()), false);
+    check("dark at 17:15 in December", isAfterDark(new Date(2026, 11, 21, 17, 15).getTime()), true);
+  } else {
+    console.log("  skip  sunset checks (run with TZ=Europe/Bucharest)");
+  }
+}
+
+console.log("\nscooters");
+{
+  check("presets carry a pack size", SCOOTERS.every((s) => s.packWh > 200 && s.packWh < 1000), true);
+  check("found by key", findScooter("segway-g30").packWh, 551);
+  check("unknown key", findScooter("nope"), null);
+  check("bars are coarse", displayResolution("bars"), 20);
+  check("the app is exact", displayResolution("app"), 1);
 }
 
 console.log("\nmap projection");
@@ -324,13 +414,52 @@ console.log("\ndemo history");
   check("stored newest first", demo[0].startedAt > demo[demo.length - 1].startedAt, true);
   check("all marked as demo", demo.every((r) => r.demo === true), true);
   const h = packHealth(demo);
-  check("the seed shows a fading pack", h.fadePct > 10 && h.fadePct < 35, true);
-  check("and enough samples to say so", h.samples >= 6, true);
-  check("it leaves a streak to show", streakDays(demo, now) >= 2, true);
+  check("the seed shows a worn pack", h.healthRounded >= 70 && h.healthRounded <= 90, true);
+  check("with enough riding to say so", h.baseline !== null, true);
+  check("it leaves this week something to show", weeklyProgress(demo, 25, now).km > 0, true);
   check("every demo ride has a route to draw", demo.every((r) => r.track.length > 20), true);
   check("and the routes are real places", demo.every((r) => trackBounds(r.track) !== null), true);
   check("pack size is respected", buildDemoRides(250, now)[0].energy.usedPct >
     buildDemoRides(1000, now)[0].energy.usedPct, true);
+}
+
+console.log("\nlevels and badges");
+{
+  const DAY = 86400000;
+  const at = (y, m, d, h = 17) => new Date(y, m - 1, d, h, 0).getTime();
+  const r = (km, t, extra = {}) => ({ id: String(t), startedAt: t, distance: km * 1000, movingTime: km * 180, ...extra });
+
+  check("no rides: rookie", riderLevel([]).level.key, "rookie");
+  check("no rides: 25 km to Cruiser", riderLevel([]).toNextKm, 25);
+  const lv = riderLevel([r(30, at(2026, 9, 1)), r(10, at(2026, 9, 2))]);
+  check("40 km: cruiser", lv.level.key, "cruiser");
+  check("40 km: 20% of the way to Explorer", lv.fraction, (40 - 25) / 75, 1e-9);
+  check("levels climb", LEVELS.every((l, i) => i === 0 || l.km > LEVELS[i - 1].km), true);
+  check("top level has no next", riderLevel([r(3000, at(2026, 9, 1))]).next, null);
+
+  // Weeks starting Mon 31 Aug, 7 Sep, 14 Sep 2026; "now" is Tue 22 Sep.
+  const now = at(2026, 9, 22, 12);
+  const weeks = [r(26, at(2026, 8, 31)), r(30, at(2026, 9, 8)), r(12, at(2026, 9, 14)), r(14, at(2026, 9, 16))];
+  check("streak counts back from last week while this one is open", goalStreak(weeks, 25, now), 3);
+  check("streak includes this week once it is met", goalStreak([...weeks, r(25, at(2026, 9, 22, 9))], 25, now), 4);
+  check("a missed week ends the streak", goalStreak([r(26, at(2026, 8, 31)), r(30, at(2026, 9, 14))], 25, now), 1);
+  check("no rides, no streak", goalStreak([], 25, now), 0);
+
+  const none = badges([], { goalKm: 25 });
+  check("every badge listed", none.length >= 10, true);
+  check("nothing earned with no rides", none.some((b) => b.earned), false);
+  const first = newlyEarned([], [r(6, at(2026, 9, 21, 9))], { goalKm: 25 }).map((b) => b.key);
+  check("first 6 km ride unlocks first-ride and 5 km", first.sort(), ["first-ride", "five-k"]);
+  const early = badges([r(2, at(2026, 9, 21, 7))], { goalKm: 25 }).find((b) => b.key === "early");
+  check("a 7 am ride is an early bird", early.earned, true);
+  const partial = badges([r(10, at(2026, 9, 21))], { goalKm: 25 }).find((b) => b.key === "twenty-k");
+  check("half of a long haul", partial.progress, 0.5, 1e-9);
+  const earnedFirst = badges([r(6, at(2026, 9, 21, 9))], { goalKm: 25 });
+  check("earned badges sort first", earnedFirst[0].earned && earnedFirst[1].earned && !earnedFirst[2].earned, true);
+  const measured = r(20, at(2026, 9, 20), { energy: energyStats({ batteryStart: 90, batteryEnd: 50, packWh: 468, distanceM: 20000 }) });
+  check("a measured ride earns range finder", badges([measured], { goalKm: 25 }).find((b) => b.key === "range").earned, true);
+  const demo = badges(buildDemoRides(468, now), { goalKm: 25 });
+  check("demo history earns battery doctor", demo.find((b) => b.key === "health").earned, true);
 }
 
 console.log("\nformatting");

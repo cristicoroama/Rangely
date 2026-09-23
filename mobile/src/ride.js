@@ -158,6 +158,13 @@ export function addPoint(state, p) {
   const dt = (p.t - prev.t) / 1000;
   if (dt <= 0) return state; // out-of-order or duplicate fix
 
+  // First fix after the rider pressed pause. The hole is theirs, not the
+  // signal's, so it is re-anchored like a gap but not counted as one — the
+  // warning about lost signal is for things that happened to the rider.
+  if (state.needsAnchor) {
+    return { ...reanchor(state, p), gaps: state.gaps, needsAnchor: false };
+  }
+
   // A hole in the data. Backgrounded app, dead signal, phone asleep: whatever
   // happened in between is unknown, and a straight line across it is a
   // fabrication that looks entirely plausible in the total.
@@ -207,7 +214,22 @@ export function emptyRide() {
     speedWindow: [],
     altRef: null,   // last believed altitude, metres
     gaps: 0,        // holes in the data, for honesty about the record
+    needsAnchor: false, // set by a pause; the next fix starts a new segment
   };
+}
+
+/** The rider stopped the clock. Nothing between now and the next fix is
+ *  ridden, and the speed window must not carry across the pause. */
+export function pauseRide(state) {
+  return { ...state, needsAnchor: true, speedWindow: [] };
+}
+
+/** Speed right now, smoothed the same way top speed is (m/s). Zero until the
+ *  window has something in it. Used for one thing only: telling a rider,
+ *  quietly, that they are above the legal limit. */
+export function currentSpeed(state) {
+  const w = state?.speedWindow ?? [];
+  return w.length ? w.reduce((a, b) => a + b, 0) / w.length : 0;
 }
 
 /** Average speed over MOVING time, which is the one riders mean. */
@@ -258,7 +280,7 @@ const inPercentRange = (n) => Number.isFinite(n) && n >= 0 && n <= 100;
  * over distance is the number that lets two different scooters be compared at
  * all. This is the figure the whole app exists for.
  */
-export function energyStats({ batteryStart, batteryEnd, packWh, distanceM }) {
+export function energyStats({ batteryStart, batteryEnd, packWh, distanceM, resolution = 1 }) {
   const start = parsePercent(batteryStart);
   const end = parsePercent(batteryEnd);
 
@@ -275,6 +297,13 @@ export function energyStats({ batteryStart, batteryEnd, packWh, distanceM }) {
 
   return {
     usedPct,
+    // The number this app can actually stand behind. Wh/km depends on the
+    // pack's rated capacity, which is the maker's claim; km per percent is
+    // two readings and a distance, all of them the rider's own.
+    kmPerPct: km / usedPct,
+    // How coarse the battery reading was: 1 for an exact percent, 20 for a
+    // five-bar display. A bar is ±10% on each end, which sinks a short ride.
+    resolution,
     wh,
     whPerKm,
     // What a full pack would take you, at the efficiency of THIS ride. Honest
@@ -289,66 +318,102 @@ export function energyStats({ batteryStart, batteryEnd, packWh, distanceM }) {
 
 /** A ride whose energy figure is precise enough to reason about pack health.
  *  One percent of a pack over 300 metres is not a measurement. */
-export function isEnergySample(ride, { minUsedPct = 5, minDistanceM = 1000 } = {}) {
-  return !!(
-    ride &&
-    ride.energy &&
-    Number.isFinite(ride.energy.estimatedRangeKm) &&
-    ride.energy.usedPct >= minUsedPct &&
-    (ride.distance || 0) >= minDistanceM
-  );
+/**
+ * Is this ride precise enough to say anything about the pack?
+ *
+ * Ten percent and two kilometres is where the reading error stops dominating:
+ * with a ±2-point gauge, a 10% ride is already ±20% on its own and a 20% ride
+ * is ±10%. A five-bar display needs twice its own step, or one bar either way
+ * is the whole measurement.
+ */
+export function isEnergySample(ride, { minUsedPct = 10, minDistanceM = 2000 } = {}) {
+  const e = ride?.energy;
+  if (!e || !Number.isFinite(e.estimatedRangeKm)) return false;
+  const floor = Math.max(minUsedPct, 2 * (e.resolution || 1));
+  return e.usedPct >= floor && (ride.distance || 0) >= minDistanceM;
 }
 
-function median(xs) {
-  if (!xs.length) return null;
-  const a = [...xs].sort((x, y) => x - y);
-  const mid = Math.floor(a.length / 2);
-  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+/** Take rides from the front of the list until they add up to `targetPct`
+ *  percentage points of battery. Windows are measured in battery used, not in
+ *  time or ride count: three short hops are not three measurements. */
+function takePct(list, targetPct) {
+  const out = [];
+  let sum = 0;
+  for (const r of list) {
+    out.push(r);
+    sum += r.energy.usedPct;
+    if (sum >= targetPct) break;
+  }
+  return out;
 }
+
+/** Combine rides as total distance over total battery. Weighting every ride
+ *  by the battery it used is what makes a 40% ride count four times a 10%
+ *  one — averaging per-ride ratios would let the noisiest hops vote equally. */
+function pool(list) {
+  const km = list.reduce((a, r) => a + r.distance / 1000, 0);
+  const pct = list.reduce((a, r) => a + r.energy.usedPct, 0);
+  return { rides: list.length, km, pct, kmPerPct: km / pct, rangeKm: (100 * km) / pct };
+}
+
+export const HEALTH_BANDS = [
+  { min: 90, key: "good" },
+  { min: 80, key: "normal" },
+  { min: 70, key: "worn" },
+  { min: -Infinity, key: "check" },
+];
 
 /**
  * How the pack is ageing.
  *
- * The promise on the tin: not the range printed on the box, and not one lucky
- * ride either, but the measured range now against the measured range when the
- * record started. Medians rather than means, because a single winter ride into
- * a headwind should not be able to declare your battery dead.
+ * The measured range now, against the measured range when the record started
+ * — both pooled over about three full packs of riding, because a single cold
+ * ride into a headwind should not be able to declare a battery dead.
+ *
+ * Health is only claimed once there are two windows that share no ride.
+ * Before that the app has a current range to show and an honest "keep riding"
+ * to say, which beats a percentage made of the same rides compared with
+ * themselves. It is rounded to 5%, because rides vary 10–20% with conditions
+ * and a figure to the unit would be precision the data does not have.
  *
  * `rides` newest first, as stored.
  */
-export function packHealth(rides, { window = 3 } = {}) {
+export function packHealth(rides, { windowPct = 300 } = {}) {
   const samples = (rides || []).filter((r) => isEnergySample(r));
-  if (samples.length < 2) return null;
+  if (!samples.length) return null;
 
-  const newest = samples.slice(0, window);
-  const oldest = samples.slice(-window);
+  const newest = takePct(samples, windowPct);
+  const oldest = takePct([...samples].reverse(), windowPct);
+  const current = pool(newest);
+  const totalPct = samples.reduce((a, r) => a + r.energy.usedPct, 0);
 
-  const current = {
-    rangeKm: median(newest.map((r) => r.energy.estimatedRangeKm)),
-    whPerKm: median(newest.map((r) => r.energy.whPerKm)),
-  };
-  const baseline = {
-    rangeKm: median(oldest.map((r) => r.energy.estimatedRangeKm)),
-    whPerKm: median(oldest.map((r) => r.energy.whPerKm)),
-  };
+  const disjoint =
+    current.pct >= windowPct &&
+    newest.length + oldest.length <= samples.length &&
+    oldest.reduce((a, r) => a + r.energy.usedPct, 0) >= windowPct;
 
-  // Two windows drawn from the same handful of rides would be comparing a
-  // number with itself and calling the difference wear.
-  const comparable = samples.length >= window * 2;
+  const baseline = disjoint ? pool(oldest) : null;
+  const healthPct = baseline ? (current.rangeKm / baseline.rangeKm) * 100 : null;
+  const healthRounded = healthPct == null ? null : Math.round(healthPct / 5) * 5;
+  const band =
+    healthRounded == null ? null : HEALTH_BANDS.find((b) => healthRounded >= b.min).key;
 
   return {
     samples: samples.length,
+    totalPct,
     current,
     baseline,
-    fadePct: comparable ? ((baseline.rangeKm - current.rangeKm) / baseline.rangeKm) * 100 : null,
+    healthPct,
+    healthRounded,
+    band,
+    // How much more riding before health can be judged, in battery points.
+    needPct: baseline ? 0 : Math.max(0, windowPct * 2 - totalPct),
     // Oldest first: a trend reads left to right.
-    trend: [...samples]
-      .reverse()
-      .map((r) => ({
-        t: r.startedAt,
-        rangeKm: r.energy.estimatedRangeKm,
-        whPerKm: r.energy.whPerKm,
-      })),
+    trend: [...samples].reverse().map((r) => ({
+      t: r.startedAt,
+      rangeKm: r.energy.estimatedRangeKm,
+      kmPerPct: r.energy.kmPerPct ?? (r.distance / 1000) / r.energy.usedPct,
+    })),
   };
 }
 
@@ -364,40 +429,4 @@ export function totals(rides) {
     }),
     { rides: 0, distance: 0, movingTime: 0, wh: 0, ascent: 0 },
   );
-}
-
-const DAY_MS = 86400000;
-const dayNumber = (ms) => {
-  // Built from the LOCAL calendar date: a ride at 01:00 belongs to the day you
-  // rode it, not to the previous one because UTC says so.
-  const d = new Date(ms);
-  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / DAY_MS);
-};
-
-/**
- * Consecutive days ridden, ending today or yesterday.
- *
- * Yesterday still counts because a streak the app declares dead at midnight,
- * before the day it is judging is over, is a streak that punishes you for
- * looking at the screen in the morning.
- */
-export function streakDays(rides, now = Date.now()) {
-  const days = new Set(
-    (rides || [])
-      .map((r) => r.startedAt)
-      .filter((t) => Number.isFinite(t))
-      .map(dayNumber),
-  );
-  if (!days.size) return 0;
-
-  const today = dayNumber(now);
-  let cursor = days.has(today) ? today : days.has(today - 1) ? today - 1 : null;
-  if (cursor == null) return 0;
-
-  let n = 0;
-  while (days.has(cursor)) {
-    n++;
-    cursor--;
-  }
-  return n;
 }
