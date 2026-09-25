@@ -76,11 +76,18 @@ function BatterySlider({ value, onChange, label, bars = 0 }) {
   ).current;
 
   const colors = levelColors(t, n);
+  // The fill is the full width of the battery, slid left by what is missing.
+  // Moving it with a transform rather than animating a percentage width keeps
+  // it off the layout path, where Android on the new architecture dropped it.
   const level = useSharedValue(has ? n : 0);
+  const bodyW = useSharedValue(0);
   useEffect(() => {
     level.value = withSpring(has ? (bars ? n : Math.max(n, 3)) : 0, SPRING.snappy);
   }, [has, n, level, bars]);
-  const fill = useAnimatedStyle(() => ({ width: `${level.value}%` }));
+  const fill = useAnimatedStyle(() => ({
+    opacity: bodyW.value > 0 ? 1 : 0,
+    transform: [{ translateX: -bodyW.value * (1 - Math.max(0, Math.min(100, level.value)) / 100) }],
+  }));
 
   return (
     <View style={styles.sliderRow}>
@@ -96,7 +103,10 @@ function BatterySlider({ value, onChange, label, bars = 0 }) {
       <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
         <View
           {...pan.panHandlers}
-          onLayout={(e) => (width.current = Math.max(1, e.nativeEvent.layout.width))}
+          onLayout={(e) => {
+            width.current = Math.max(1, e.nativeEvent.layout.width);
+            bodyW.value = e.nativeEvent.layout.width;
+          }}
           accessible
           accessibilityRole="adjustable"
           accessibilityLabel={label}
@@ -227,7 +237,7 @@ const styles = StyleSheet.create({
   nudge: { width: 48, height: 64, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   nudgeText: { fontSize: 26, fontFamily: F.bold, marginTop: -2 },
   body: { flex: 1, height: 64, borderRadius: 18, borderWidth: 2.5, overflow: "hidden", justifyContent: "center", userSelect: "none" },
-  fill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 14, overflow: "hidden" },
+  fill: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, borderRadius: 14, overflow: "hidden" },
   cap: { width: 6, height: 24, borderTopRightRadius: 4, borderBottomRightRadius: 4, marginLeft: 3 },
   center: { ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center" },
   pctText: { fontFamily: F.numHeavy, fontSize: 34, lineHeight: 38, fontVariant: ["tabular-nums"], includeFontPadding: false },

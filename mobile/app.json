@@ -71,6 +71,14 @@
           "isIosBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Rangely uses a photo you choose to show your scooter.",
+          "cameraPermission": "Rangely uses the camera only when you take a photo of your scooter.",
+          "microphonePermission": false
+        }
       ]
     ],
     "extra": {

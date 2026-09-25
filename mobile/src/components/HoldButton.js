@@ -23,6 +23,7 @@ import { Icon } from "../ui";
 export function HoldButton({ label = "Hold to finish", onComplete, duration = DUR.hold, style }) {
   const t = useTheme();
   const progress = useSharedValue(0);
+  const w = useSharedValue(0);
   const timers = useRef([]);
   const done = useRef(false);
 
@@ -54,7 +55,12 @@ export function HoldButton({ label = "Hold to finish", onComplete, duration = DU
     if (!done.current) progress.value = withSpring(0, SPRING.snappy);
   };
 
-  const fill = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+  // Full-width fill slid in with a transform: an animated percentage width
+  // did not draw on Android's new architecture.
+  const fill = useAnimatedStyle(() => ({
+    opacity: w.value > 0 && progress.value > 0.001 ? 1 : 0,
+    transform: [{ translateX: -w.value * (1 - progress.value) }],
+  }));
 
   return (
     <Pressable
@@ -67,9 +73,12 @@ export function HoldButton({ label = "Hold to finish", onComplete, duration = DU
       onAccessibilityAction={(e) => {
         if (e.nativeEvent.actionName === "activate") onComplete?.();
       }}
+      onLayout={(e) => (w.value = e.nativeEvent.layout.width)}
       style={[styles.btn, { backgroundColor: t.dangerWash, borderColor: t.danger }, style]}
     >
-      <Animated.View style={[styles.fill, { backgroundColor: t.dangerFill }, fill]} />
+      <View style={[StyleSheet.absoluteFill, { opacity: 0.35 }]} pointerEvents="none">
+        <Animated.View style={[styles.fill, { backgroundColor: t.dangerFill }, fill]} />
+      </View>
       <View style={styles.row} pointerEvents="none">
         <Icon name="stop" size={18} color={t.danger} />
         <Text style={[styles.text, { color: t.danger }]}>{label}</Text>
@@ -86,7 +95,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     justifyContent: "center",
   },
-  fill: { position: "absolute", left: 0, top: 0, bottom: 0, opacity: 0.35 },
+  fill: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0 },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   text: { fontSize: 18, fontFamily: F.heavy, letterSpacing: 0.2 },
 });

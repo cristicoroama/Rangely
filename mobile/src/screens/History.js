@@ -8,9 +8,10 @@ import { DUR } from "../motion";
 import { Icon, IconTile, Pill, Press, Txt, themed } from "../ui";
 import { CountUp } from "../components/CountUp";
 import { HeroPanel } from "../components/Gradient";
-import { ScooterArt } from "../components/ScooterArt";
+import { LevelMedal } from "../components/Medal";
 import { RouteShape } from "../map";
 import { avgSpeed, fmtDuration, msToKmh, totals } from "../ride";
+import { riderLevel } from "../achievements";
 import { dayLabel, timeLabel } from "../when";
 
 /** Only the first screenful is staggered in; anything further down arrives
@@ -85,6 +86,7 @@ function RideRow({ ride, index, onOpen }) {
 function Summary({ rides }) {
   const [s, t] = useStyles();
   const all = useMemo(() => totals(rides), [rides]);
+  const lv = useMemo(() => riderLevel(rides), [rides]);
   return (
     <HeroPanel style={s.summary}>
       <View style={s.sumTop}>
@@ -95,7 +97,10 @@ function Summary({ rides }) {
             <Text style={s.sumKmUnit}>km</Text>
           </View>
         </View>
-        <ScooterArt width={120} onHero motion={false} />
+        <View style={{ alignItems: "center", gap: 4 }}>
+          <LevelMedal level={lv.level} index={lv.index} size={78} />
+          <Text style={s.sumLabel}>{lv.level.name}</Text>
+        </View>
       </View>
       <View style={s.sumRow}>
         <View style={s.sumItem}>
@@ -121,7 +126,7 @@ function Empty() {
   const [s] = useStyles();
   return (
     <Animated.View entering={FadeInDown.duration(DUR.base)} style={s.empty}>
-      <ScooterArt width={200} />
+      <IconTile name="scooter" tone="grad" size={96} icon={52} />
       <Text style={s.emptyTitle}>No rides yet</Text>
       <Txt style={{ textAlign: "center" }}>
         Every ride you record shows up here, with its route drawn out.

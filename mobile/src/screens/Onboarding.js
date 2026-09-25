@@ -8,9 +8,7 @@ import Animated, {
   SlideOutLeft,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -18,8 +16,7 @@ import { StatusBar } from "expo-status-bar";
 import { F, TYPE } from "../theme";
 import { DUR, EASE, SPRING } from "../motion";
 import { Button, Icon, IconTile, Txt, themed } from "../ui";
-import { HeroPanel } from "../components/Gradient";
-import { ScooterArt } from "../components/ScooterArt";
+import { PhotoHero } from "../components/PhotoHero";
 import { Choice } from "../components/Choice";
 import { DisplayList, ScooterList, SpeedNote } from "../components/ScooterPicker";
 import { OTHER } from "../scooters";
@@ -27,25 +24,6 @@ import { AGE_BRACKETS, LOCAL } from "../rules";
 import { DEFAULT_GOAL_KM } from "../goals";
 
 /* --------------------------------------------------------------- welcome -- */
-
-/** The scooter rides in from the left and settles with a little bounce —
- *  the first thing the app does is move. */
-function DrivingScooter() {
-  const x = useSharedValue(-320);
-  const bob = useSharedValue(0);
-  useEffect(() => {
-    x.value = withDelay(150, withSpring(0, { damping: 14, stiffness: 90, mass: 1 }));
-    bob.value = withDelay(1100, withTiming(1, { duration: 400 }));
-  }, [x, bob]);
-  const style = useAnimatedStyle(() => ({
-    transform: [{ translateX: x.value }, { translateY: -3 * Math.sin(bob.value * Math.PI) }],
-  }));
-  return (
-    <Animated.View style={[{ alignSelf: "center" }, style]}>
-      <ScooterArt width={270} onHero />
-    </Animated.View>
-  );
-}
 
 function Welcome({ onNext }) {
   const [s, t] = useStyles();
@@ -56,15 +34,14 @@ function Welcome({ onNext }) {
   ];
   return (
     <View style={s.step}>
-      <View style={{ flex: 1, justifyContent: "center" }}>
-        <DrivingScooter />
+      <View style={{ flex: 1, justifyContent: "flex-end", paddingBottom: 26 }}>
         <Animated.View entering={FadeInDown.delay(450).duration(DUR.slow)}>
           <Text style={s.brand}>
             Range<Text style={{ color: t.grad[0] }}>ly</Text>
           </Text>
           <Text style={s.lead}>How far can your scooter really go?</Text>
         </Animated.View>
-        <View style={{ gap: 14, marginTop: 30 }}>
+        <View style={{ gap: 12, marginTop: 24 }}>
           {features.map((f, i) => (
             <Animated.View key={f.icon} entering={FadeInDown.delay(650 + i * 90).duration(DUR.base)} style={s.feature}>
               <IconTile name={f.icon} tone="hero" size={46} icon={22} />
@@ -216,7 +193,7 @@ export function OnboardingScreen({ onDone }) {
       <StatusBar style={hero ? "light" : t.statusBar} />
       {hero ? (
         <Animated.View entering={FadeIn.duration(DUR.base)} exiting={FadeOut.duration(DUR.slow)} style={StyleSheet.absoluteFill}>
-          <HeroPanel radius={0} style={{ flex: 1 }} />
+          <PhotoHero mode="top" style={{ flex: 1 }} />
         </Animated.View>
       ) : null}
       <View style={styles.top}>
@@ -252,9 +229,9 @@ const useStyles = themed((t) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: t.bg },
     step: { flex: 1, paddingHorizontal: 18, paddingTop: 12 },
-    brand: { fontFamily: F.heavy, fontSize: 56, lineHeight: 64, letterSpacing: -2, color: t.onHero, textAlign: "center", marginTop: 18 },
-    lead: { ...TYPE.heading, color: t.onHero2, textAlign: "center", marginTop: 4 },
-    feature: { flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 8 },
+    brand: { fontFamily: F.heavy, fontSize: 60, lineHeight: 66, letterSpacing: -2, color: t.onHero },
+    lead: { ...TYPE.heading, fontSize: 21, lineHeight: 27, color: t.onHero2, marginTop: 2 },
+    feature: { flexDirection: "row", alignItems: "center", gap: 14 },
     featureText: { ...TYPE.bodyStrong, fontSize: 17, color: t.onHero, flex: 1 },
     h1: { ...TYPE.title, color: t.text },
     h2: { ...TYPE.heading, color: t.text },

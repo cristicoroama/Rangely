@@ -16,10 +16,12 @@ const PROFILE_KEY = "rangely.profile.v1";
 
 /**
  * `model` is a preset key from scooters.js (or "other"), `display` is how the
- * scooter shows its charge — "app", "number" or "bars" — which decides both
- * how the battery is asked for and how much a reading can be trusted.
+ * scooter shows its charge — "app", "number", "bars10" or "bars" — which
+ * decides both how the battery is asked for and how much a reading can be
+ * trusted. `photo` is the rider's own picture of it, a file in the app's
+ * document folder, or null.
  */
-export const DEFAULT_SCOOTER = { name: "My scooter", model: null, packWh: 500, display: "app" };
+export const DEFAULT_SCOOTER = { name: "My scooter", model: null, packWh: 500, display: "app", photo: null };
 
 /**
  * Who is riding, at the level the app needs and no further: an age bracket

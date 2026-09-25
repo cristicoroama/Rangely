@@ -9,6 +9,26 @@ function useSvgId(prefix) {
   return `${prefix}${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
 }
 
+/**
+ * Split a colour into an opaque colour and its alpha. Android's SVG renderer
+ * ignores the alpha inside an rgba() stop colour — "rgba(0,0,0,0.35)" paints
+ * solid black — so transparency has to travel as stopOpacity instead.
+ */
+export function splitAlpha(color) {
+  const c = String(color).trim();
+  const m = c.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i);
+  if (m) return { color: `rgb(${m[1]},${m[2]},${m[3]})`, alpha: m[4] == null ? 1 : Number(m[4]) };
+  const h = c.match(/^#([0-9a-f]{6})([0-9a-f]{2})$/i);
+  if (h) return { color: `#${h[1]}`, alpha: parseInt(h[2], 16) / 255 };
+  return { color: c, alpha: 1 };
+}
+
+/** A gradient stop that keeps its transparency on every platform. */
+function stop(key, offset, color, opacity = 1) {
+  const { color: c, alpha } = splitAlpha(color);
+  return <Stop key={key} offset={offset} stopColor={c} stopOpacity={alpha * opacity} />;
+}
+
 const DIRS = {
   diag: { x1: "0", y1: "0", x2: "1", y2: "1" },
   across: { x1: "0", y1: "0.5", x2: "1", y2: "0.5" },
@@ -28,9 +48,7 @@ export function GradientFill({ colors, dir = "diag", opacity = 1, style }) {
       <Svg width="100%" height="100%">
         <Defs>
           <LinearGradient id={id} {...d}>
-            {colors.map((c, i) => (
-              <Stop key={i} offset={String(i / Math.max(1, colors.length - 1))} stopColor={c} stopOpacity={opacity} />
-            ))}
+            {colors.map((c, i) => stop(i, String(i / Math.max(1, colors.length - 1)), c, opacity))}
           </LinearGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
@@ -48,12 +66,12 @@ export function Glow({ a, b }) {
       <Svg width="100%" height="100%">
         <Defs>
           <RadialGradient id={ida} cx="0.12" cy="0.05" r="0.75" fx="0.12" fy="0.05">
-            <Stop offset="0" stopColor={a} stopOpacity="1" />
-            <Stop offset="1" stopColor={a} stopOpacity="0" />
+            {stop("a0", "0", a)}
+            {stop("a1", "1", a, 0)}
           </RadialGradient>
           <RadialGradient id={idb} cx="0.95" cy="0.95" r="0.7" fx="0.95" fy="0.95">
-            <Stop offset="0" stopColor={b} stopOpacity="1" />
-            <Stop offset="1" stopColor={b} stopOpacity="0" />
+            {stop("b0", "0", b)}
+            {stop("b1", "1", b, 0)}
           </RadialGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${ida})`} />

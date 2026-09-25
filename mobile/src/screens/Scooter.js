@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { Modal, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { F, TYPE } from "../theme";
 import { DUR } from "../motion";
 import { Button, Card, Icon, IconTile, Pill, Press, SectionTitle, Txt, themed } from "../ui";
-import { HeroPanel } from "../components/Gradient";
-import { ScooterArt } from "../components/ScooterArt";
+import { PhotoHero } from "../components/PhotoHero";
+import { ActionSheet } from "../components/ActionSheet";
+import { forgetScooterPhoto, pickScooterPhoto } from "../scooterPhoto";
+import { haptic } from "../haptics";
 import { DisplayList, ScooterList, SpeedNote } from "../components/ScooterPicker";
 import { OTHER, findScooter } from "../scooters";
 import { AGE_BRACKETS, LOCAL, needsHelmetByLaw } from "../rules";
@@ -104,6 +106,37 @@ export function ScooterScreen({
   const insets = useSafeAreaInsets();
   const kb = useKeyboardHeight();
   const [picking, setPicking] = useState(false);
+  const [photoMenu, setPhotoMenu] = useState(false);
+
+  const setPhoto = async (from) => {
+    const r = await pickScooterPhoto(from);
+    if (r.ok) {
+      if (scooter.photo && scooter.photo !== r.uri) forgetScooterPhoto(scooter.photo);
+      onScooter({ ...scooter, photo: r.uri });
+      haptic.success();
+    } else if (r.reason === "camera") {
+      Alert.alert("Camera is off for Rangely", "Allow the camera in Settings to take a photo of your scooter.", [
+        { text: "Not now", style: "cancel" },
+        { text: "Open Settings", onPress: () => Linking.openSettings() },
+      ]);
+    }
+  };
+
+  const photoActions = [
+    { label: "Take a photo", icon: "camera", onPress: () => setPhoto("camera") },
+    { label: "Choose from gallery", icon: "photo", onPress: () => setPhoto("library") },
+    ...(scooter.photo
+      ? [{
+          label: "Remove my photo",
+          icon: "trash",
+          destructive: true,
+          onPress: () => {
+            forgetScooterPhoto(scooter.photo);
+            onScooter({ ...scooter, photo: null });
+          },
+        }]
+      : []),
+  ];
   const preset = findScooter(scooter.model);
   const helmetForYou = needsHelmetByLaw(profile.ageBracket);
 
@@ -132,10 +165,25 @@ export function ScooterScreen({
       </Animated.View>
 
       <Animated.View entering={enter(i++)}>
-        <HeroPanel style={s.hero}>
-          <View style={{ alignItems: "center", marginTop: 4 }}>
-            <ScooterArt width={230} onHero />
+        <PhotoHero
+          source={scooter.photo ? { uri: scooter.photo } : undefined}
+          style={s.hero}
+          zoom={false}
+          fade={["rgba(6,14,12,0.05)", "rgba(6,14,12,0.6)", "rgba(6,14,12,0.94)"]}
+        >
+          {/* Your own scooter, not a stock one: a photo button on the picture. */}
+          <View style={s.photoRow}>
+            <Press
+              onPress={() => setPhotoMenu(true)}
+              feel="tap"
+              style={s.photoBtn}
+              accessibilityLabel={scooter.photo ? "Change the photo of your scooter" : "Add a photo of your scooter"}
+            >
+              <Icon name={scooter.photo ? "camera" : "cameraPlus"} size={18} color={t.onHero} />
+              <Text style={s.photoBtnText}>{scooter.photo ? "Change photo" : "Add your photo"}</Text>
+            </Press>
           </View>
+          <View style={{ height: 106 }} />
           <Text style={s.heroLabel}>Model</Text>
           <Text style={s.heroName} numberOfLines={2}>
             {preset ? preset.name : scooter.model === OTHER.key ? "Another scooter" : "Choose your model"}
@@ -148,7 +196,7 @@ export function ScooterScreen({
             </Press>
           </View>
           <SpeedNote model={scooter.model} onHero style={{ marginTop: 14 }} />
-        </HeroPanel>
+        </PhotoHero>
       </Animated.View>
 
       <Animated.View entering={enter(i++)}>
@@ -280,6 +328,12 @@ export function ScooterScreen({
       ) : null}
 
       <ModelSheet open={picking} value={scooter.model} onPick={pick} onClose={() => setPicking(false)} />
+      <ActionSheet
+        open={photoMenu}
+        title="Photo of your scooter"
+        actions={photoActions}
+        onClose={() => setPhotoMenu(false)}
+      />
     </ScrollView>
   );
 }
@@ -294,7 +348,7 @@ const useStyles = themed((t) =>
       width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center",
       backgroundColor: t.surface, borderWidth: 1, borderColor: t.line,
     },
-    hero: { padding: 18 },
+    hero: { padding: 18, borderRadius: t.radius + 4 },
     heroLabel: { ...TYPE.label, color: t.onHero3, marginTop: 12 },
     heroName: { ...TYPE.title, fontSize: 24, lineHeight: 30, color: t.onHero, marginTop: 2 },
     heroMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
@@ -303,6 +357,12 @@ const useStyles = themed((t) =>
       borderRadius: 999, backgroundColor: t.grad[0],
     },
     changeText: { fontFamily: F.heavy, fontSize: 14, color: t.gradInk },
+    photoRow: { flexDirection: "row", justifyContent: "flex-end" },
+    photoBtn: {
+      flexDirection: "row", alignItems: "center", gap: 8, height: 40, paddingHorizontal: 14,
+      borderRadius: 999, backgroundColor: "rgba(0,0,0,0.42)", borderWidth: 1, borderColor: "rgba(255,255,255,0.22)",
+    },
+    photoBtnText: { fontFamily: F.bold, fontSize: 14, color: t.onHero },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: t.line },
     fieldRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     field: {

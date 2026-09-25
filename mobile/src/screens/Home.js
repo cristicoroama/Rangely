@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import Animated, {
   FadeInDown,
   ZoomIn,
@@ -95,7 +95,11 @@ function Hero({ rides, profile, scooter, now, onOpenScooter }) {
           </Text>
         </View>
         <Press onPress={onOpenScooter} style={s.scooterChip} accessibilityLabel="Your scooter">
-          <Icon name="scooter" size={18} color={t.onHero} />
+          {scooter.photo ? (
+            <Image source={{ uri: scooter.photo }} style={s.chipPhoto} resizeMethod="resize" />
+          ) : (
+            <Icon name="scooter" size={18} color={t.onHero} />
+          )}
           <Text style={s.scooterName} numberOfLines={1}>{scooter.name}</Text>
         </Press>
       </View>
@@ -510,6 +514,7 @@ const useStyles = themed((t) =>
       borderRadius: t.pill, paddingHorizontal: 14, height: 40,
     },
     scooterName: { fontFamily: F.bold, fontSize: 14, color: t.onHero, flexShrink: 1 },
+    chipPhoto: { width: 28, height: 28, borderRadius: 14, marginLeft: -8, borderWidth: 1.5, borderColor: "rgba(255,255,255,0.5)" },
 
     goalRow: { flexDirection: "row", alignItems: "center", gap: 18, marginTop: 20 },
     ringValue: { ...TYPE.big, fontSize: 46, lineHeight: 46, color: t.onHero },
