@@ -8,6 +8,7 @@ import { Button, Icon, Pill, Txt, themed } from "../ui";
 import { RecDot } from "../components/RecDot";
 import { HoldButton } from "../components/HoldButton";
 import { HeroPanel } from "../components/Gradient";
+import { ModeTag } from "../components/ModePicker";
 import { RouteMap } from "../map";
 import { avgSpeed, currentSpeed, fmtDuration, msToKmh } from "../ride";
 import { LOCAL } from "../rules";
@@ -27,7 +28,7 @@ import { useNow } from "../useNow";
  * fastest number the biggest thing on screen rewards the wrong thing; it only
  * appears here as a nudge when the ride goes over the legal limit.
  */
-export function RideScreen({ tracker, onFinish }) {
+export function RideScreen({ tracker, onFinish, ridingMode, ridingLabel, dual }) {
   const [s, t] = useStyles();
   const insets = useSafeAreaInsets();
   const { state, paused, mode, clock, pause, resume } = tracker;
@@ -53,9 +54,12 @@ export function RideScreen({ tracker, onFinish }) {
               {paused ? "PAUSED" : "RECORDING"}
             </Text>
           </View>
-          <Pill tone="hero" icon={mode === "background" ? "check" : "light"}>
-            {mode === "background" ? "Screen can turn off" : "Keep the app open"}
-          </Pill>
+          {/* The mode chosen before the ride, as a reminder of what these
+              numbers were measured in. */}
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            <ModeTag mode={ridingMode} label={ridingLabel} onHero />
+            {dual ? <ModeTag mode="turbo" label="Dual" onHero /> : null}
+          </View>
         </View>
 
         <Animated.View style={[s.heroRow, dim]}>
@@ -127,10 +131,14 @@ export function RideScreen({ tracker, onFinish }) {
         />
         <HoldButton label="Hold to finish" onComplete={onFinish} style={{ flex: 1.35 }} />
       </View>
-      {mode === "foreground" && !paused ? (
+      {!paused ? (
         <View style={s.note}>
-          <Icon name="light" size={13} color={t.text3} />
-          <Txt role="small">The screen stays on so the ride keeps recording.</Txt>
+          <Icon name={mode === "background" ? "check" : "light"} size={13} color={mode === "background" ? t.accent : t.text3} />
+          <Txt role="small">
+            {mode === "background"
+              ? "You can turn the screen off — it keeps recording."
+              : "The screen stays on so the ride keeps recording."}
+          </Txt>
         </View>
       ) : null}
     </View>

@@ -9,6 +9,7 @@ import { Icon, IconTile, Pill, Press, Txt, themed } from "../ui";
 import { CountUp } from "../components/CountUp";
 import { HeroPanel } from "../components/Gradient";
 import { LevelMedal } from "../components/Medal";
+import { ModeTag } from "../components/ModePicker";
 import { RouteShape } from "../map";
 import { avgSpeed, fmtDuration, msToKmh, totals } from "../ride";
 import { riderLevel } from "../achievements";
@@ -70,8 +71,9 @@ function RideRow({ ride, index, onOpen }) {
           <Text style={s.meta}>
             {fmtDuration(ride.movingTime)} · {msToKmh(avgSpeed(ride)).toFixed(1)} km/h
           </Text>
-          {Number.isFinite(range) || ride.demo ? (
+          {Number.isFinite(range) || ride.demo || ride.mode ? (
             <View style={s.pills}>
+              {ride.mode ? <ModeTag mode={ride.mode} label={ride.modeLabel} /> : null}
               {Number.isFinite(range) ? <Pill tone="aqua" icon="battery">{`~${Math.round(range)} km range`}</Pill> : null}
               {ride.demo ? <Pill>Demo</Pill> : null}
             </View>

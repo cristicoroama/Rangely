@@ -16,6 +16,8 @@ first-time rider understands every screen without being told.
 - [x] Ride recording — distance, moving time, average speed, ascent, pause and resume
 - [x] Energy — km per 1% of battery, measured full range, Wh/km
 - [x] Battery health — measured range now against when the record started
+- [x] Riding modes — each brand's own names (KuKirin 1 · Eco / 2 · Sport / 3 · Race,
+      Segway ECO / D / S…), a Dual motor switch, range and consumption per mode
 - [x] Weekly goal — a ring that fills, the last six weeks under it, weeks-in-a-row
 - [x] Levels and badges — lifetime distance levels, twelve badges, never for speed
 - [x] Onboarding — three screens: what it does, age group, which scooter
@@ -70,6 +72,26 @@ the pack fading as it goes, two of them today) so battery health, the weekly
 ring and the history can be judged without a month of riding first; a button to
 remove it again; and one to replay the welcome screens. The rides are marked
 "Demo", and the card does not exist in a release build.
+
+## A beta to ride with
+
+```powershell
+cd mobile
+npm run beta
+```
+
+Builds a release APK with the JavaScript inside it — no Metro, no laptop, no
+cable needed to run it — and puts it in `beta\Rangely-beta-<date>.apk`. If one
+phone is plugged in (or paired over Wi-Fi with Android's wireless debugging)
+it is installed straight away; otherwise copy the file to the phone and open
+it. It is signed with the same debug key as the development build, so it
+installs over it and keeps your rides. It is built for 64-bit ARM only, which
+is every phone from the last several years but not the x86 emulator.
+
+A beta keeps the last error it hit and shows it under **This build** in the
+Scooter tab, and a screen that fails to draw shows its error instead of going
+blank — something to screenshot when a test ride goes wrong away from the
+laptop.
 
 ## Testing a ride without going outside
 

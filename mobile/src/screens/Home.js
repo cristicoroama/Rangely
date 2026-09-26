@@ -21,8 +21,11 @@ import { BatteryField } from "../components/BatteryField";
 import { ProgressBar } from "../components/ProgressBar";
 import { HeroPanel } from "../components/Gradient";
 import { LevelMedal, MEDAL_COLORS, Medal } from "../components/Medal";
+import { ModePicker } from "../components/ModePicker";
+import { GradientFill } from "../components/Gradient";
 import { RouteShape } from "../map";
-import { fmtDuration, packHealth } from "../ride";
+import { fmtDuration } from "../ride";
+import { MODES, healthFor, modeInsight, modeLabel, modeStats } from "../modes";
 import { recentWeeks, weeklyProgress } from "../goals";
 import { LOCAL, isAfterDark, needsHelmetByLaw } from "../rules";
 import { BADGES, badges, goalStreak, riderLevel } from "../achievements";
@@ -265,9 +268,10 @@ function BadgeRow({ rides, goalKm }) {
 
 /* ----------------------------------------------------------- health card -- */
 
-function HealthCard({ rides }) {
+function HealthCard({ rides, preset }) {
   const [s, t] = useStyles();
-  const health = useMemo(() => packHealth(rides), [rides]);
+  const health = useMemo(() => healthFor(rides), [rides]);
+  const basis = health?.mode ? `Compared on your ${modeLabel(preset, health.mode)} rides.` : null;
 
   if (!health) {
     return (
@@ -331,6 +335,68 @@ function HealthCard({ rides }) {
         Range now {Math.round(current.rangeKm)} km · was {Math.round(baseline.rangeKm)} km
       </Txt>
       <Sparkline values={health.trend.map((p) => p.rangeKm)} />
+      {basis ? (
+        <Txt role="small" style={{ marginTop: 10 }}>
+          {basis} Sport uses more battery than Eco, so mixing them would look like wear.
+        </Txt>
+      ) : null}
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------ range by mode -- */
+
+/**
+ * How far a full charge goes in each mode, from the rider's own rides — the
+ * question "is Race worth it?" answered in kilometres.
+ */
+function ModeRangeCard({ rides, preset }) {
+  const [s, t] = useStyles();
+  const stats = useMemo(() => modeStats(rides), [rides]);
+  const insight = useMemo(() => modeInsight(stats), [stats]);
+  if (!stats.length) return null;
+  const max = Math.max(...stats.map((m) => m.rangeKm));
+
+  return (
+    <Card style={{ marginTop: 12 }}>
+      <View style={s.cardHead}>
+        <IconTile name="speed" tone="grad" />
+        <Text style={[s.cardTitle, { flex: 1 }]}>Range by mode</Text>
+      </View>
+      <View style={{ gap: 12, marginTop: 14 }}>
+        {stats.map((m) => (
+          <View key={m.mode} accessibilityLabel={`${modeLabel(preset, m.mode)}: ${Math.round(m.rangeKm)} kilometres on a full charge`}>
+            <View style={s.modeLine}>
+              <Text style={s.modeName}>{modeLabel(preset, m.mode)}</Text>
+              <Text style={s.modeRange}>
+                {Math.round(m.rangeKm)}
+                <Text style={s.modeUnit}> km</Text>
+              </Text>
+            </View>
+            <View style={[s.modeTrack, { backgroundColor: t.surface2 }]}>
+              <View style={[s.modeBar, { width: `${Math.max(8, (m.rangeKm / max) * 100)}%` }]}>
+                <GradientFill colors={MODES[m.mode].colors} dir="across" />
+              </View>
+            </View>
+            <Txt role="small" style={{ marginTop: 3 }}>
+              {m.kmPerPct.toFixed(2)} km per 1% · {plural(m.rides, "ride")}
+            </Txt>
+          </View>
+        ))}
+      </View>
+      {insight ? (
+        <View style={[s.insight, { backgroundColor: t.warnWash }]}>
+          <Icon name="bolt" size={16} color={t.warn} />
+          <Text style={s.insightText}>
+            {modeLabel(preset, insight.worst.mode)} uses {Math.round(insight.extraPct)}% more battery per km than{" "}
+            {modeLabel(preset, insight.best.mode)}.
+          </Text>
+        </View>
+      ) : (
+        <Txt role="small" style={{ marginTop: 12 }}>
+          Measure a ride in another mode to see how much more battery it takes.
+        </Txt>
+      )}
     </Card>
   );
 }
@@ -367,7 +433,7 @@ function LastRide({ ride, onOpen, now }) {
 
 export function HomeScreen({
   rides, scooter, profile, battery, onBattery, onStart, starting, canBackground,
-  onOpenRide, onSeeAll, onOpenScooter,
+  onOpenRide, onSeeAll, onOpenScooter, preset, mode, onMode, dual, onDual,
 }) {
   const [s, t] = useStyles();
   const insets = useSafeAreaInsets();
@@ -421,6 +487,9 @@ export function HomeScreen({
                 suggestions={suggestions}
                 hint="Optional — set it again at the end to measure your real range."
               />
+              <View style={s.divider} />
+              <Txt role="strong" style={{ marginBottom: 10 }}>Riding mode</Txt>
+              <ModePicker preset={preset} value={mode} onChange={onMode} dual={dual} onDual={onDual} />
             </Card>
           </Animated.View>
 
@@ -443,7 +512,8 @@ export function HomeScreen({
 
           <Animated.View entering={enter(i++)}>
             <SectionTitle>Your battery</SectionTitle>
-            <HealthCard rides={rides} />
+            <HealthCard rides={rides} preset={preset} />
+            <ModeRangeCard rides={rides} preset={preset} />
           </Animated.View>
 
           {last ? (
@@ -552,6 +622,15 @@ const useStyles = themed((t) =>
     bigValue: { ...TYPE.display, color: t.text },
     bigUnit: { fontFamily: F.num, fontSize: 26, color: t.text3 },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: t.line, marginVertical: 16 },
+
+    modeLine: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 },
+    modeName: { fontFamily: F.bold, fontSize: 15, color: t.text },
+    modeRange: { ...TYPE.value, fontSize: 26, lineHeight: 28, color: t.text },
+    modeUnit: { fontFamily: F.bold, fontSize: 13, color: t.text3 },
+    modeTrack: { height: 12, borderRadius: 6, overflow: "hidden" },
+    modeBar: { height: "100%", borderRadius: 6, overflow: "hidden" },
+    insight: { flexDirection: "row", alignItems: "flex-start", gap: 8, borderRadius: 14, padding: 12, marginTop: 14 },
+    insightText: { fontFamily: F.semi, fontSize: 14, lineHeight: 20, color: t.text, flex: 1 },
 
     link: { fontFamily: F.heavy, fontSize: 14, color: t.accent },
     lastCard: {

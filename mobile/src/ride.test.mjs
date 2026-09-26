@@ -17,6 +17,7 @@ import { daylight, isAfterDark, needsHelmetByLaw, LOCAL } from "./rules.js";
 import { BRANDS, DISPLAYS, SCOOTERS, findDisplay, findScooter, displayResolution, overLegalSpeed, scootersOf } from "./scooters.js";
 import { buildDemoRides } from "./demoRides.js";
 import { LEVELS, riderLevel, goalStreak, badges, newlyEarned } from "./achievements.js";
+import { MODES, modesFor, modeLabel, defaultMode, modeStats, modeInsight, healthFor } from "./modes.js";
 import { TILE, fitView, latToY, lonToX, projectTrack, tilesFor, trackBounds } from "./slippy.js";
 
 let failures = 0;
@@ -423,8 +424,9 @@ console.log("\ndemo history");
   check("every demo ride has energy", demo.every((r) => r.energy), true);
   check("stored newest first", demo[0].startedAt > demo[demo.length - 1].startedAt, true);
   check("all marked as demo", demo.every((r) => r.demo === true), true);
-  const h = packHealth(demo);
+  const h = healthFor(demo);
   check("the seed shows a worn pack", h.healthRounded >= 70 && h.healthRounded <= 90, true);
+  check("measured on its main mode", h.mode, "normal");
   check("with enough riding to say so", h.baseline !== null, true);
   check("it leaves this week something to show", weeklyProgress(demo, 25, now).km > 0, true);
   check("every demo ride has a route to draw", demo.every((r) => r.track.length > 20), true);
@@ -470,6 +472,36 @@ console.log("\nlevels and badges");
   check("a measured ride earns range finder", badges([measured], { goalKm: 25 }).find((b) => b.key === "range").earned, true);
   const demo = badges(buildDemoRides(468, now), { goalKm: 25 });
   check("demo history earns battery doctor", demo.find((b) => b.key === "health").earned, true);
+}
+
+console.log("\nriding modes");
+{
+  const kk = findScooter("kukirin-g2-max");
+  check("KuKirin labels its gears", modesFor(kk).map((m) => m.label), ["1 · Eco", "2 · Sport", "3 · Race"]);
+  check("KuKirin gear 3 is the sport kind", modesFor(kk)[2].mode, "sport");
+  check("Xiaomi 4 Pro has no S+", modesFor(findScooter("xiaomi-4-pro-2")).some((m) => m.mode === "turbo"), false);
+  check("Xiaomi 5 has S+", modeLabel(findScooter("xiaomi-5"), "turbo"), "S+");
+  check("Segway starts in D", modeLabel(findScooter("segway-g30"), defaultMode(findScooter("segway-g30"))), "D");
+  check("NIU has no middle mode, starts in E-Save", defaultMode(findScooter("niu-kqi3-pro")), "eco");
+  check("an unknown scooter gets plain names", modesFor(null).map((m) => m.label), ["Eco", "Normal", "Sport", "Turbo"]);
+  check("dual-motor models are marked", findScooter("dualtron-thunder-3").dual && !findScooter("dualtron-mini").dual, true);
+
+  const at = (d) => new Date(2026, 8, d, 17).getTime();
+  const ride = (km, used, mode, d) => ({
+    startedAt: at(d), distance: km * 1000, mode,
+    energy: energyStats({ batteryStart: 90, batteryEnd: 90 - used, packWh: 500, distanceM: km * 1000 }),
+  });
+  const rides = [ride(20, 40, "eco", 1), ride(10, 20, "eco", 2), ride(15, 45, "sport", 3), ride(1, 30, "sport", 4)];
+  const st = modeStats(rides);
+  check("stats per mode, in mode order", st.map((x) => x.mode), ["eco", "sport"]);
+  check("pooled: 30 km on 60% of eco", st[0].kmPerPct, 0.5, 1e-9);
+  check("a 1 km ride is not a sample", st[1].rides, 1);
+  check("eco range on a full charge", st[0].rangeKm, 50, 1e-9);
+  const ins = modeInsight(st);
+  check("sport takes half as much again", Math.round(ins.extraPct), 50);
+  check("one mode is no comparison", modeInsight(st.slice(0, 1)), null);
+  check("unmoded rides are left out", modeStats([{ ...rides[0], mode: undefined }]).length, 0);
+  check("MODES are four", Object.keys(MODES).length, 4);
 }
 
 console.log("\nformatting");

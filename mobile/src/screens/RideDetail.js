@@ -7,6 +7,7 @@ import { F, TYPE } from "../theme";
 import { DUR } from "../motion";
 import { Button, Card, Icon, IconTile, Pill, Press, SectionTitle, Stat, Txt, themed } from "../ui";
 import { HeroPanel } from "../components/Gradient";
+import { ModeTag } from "../components/ModePicker";
 import { RouteMap } from "../map";
 import { avgSpeed, fmtDuration, isEnergySample, msToKmh } from "../ride";
 import { dayLabel, timeLabel } from "../when";
@@ -47,6 +48,8 @@ export function RideDetail({ ride, onClose, onDelete }) {
             {ride.scooter ? ` · ${ride.scooter}` : ""}
           </Txt>
         </View>
+        {ride.mode ? <ModeTag mode={ride.mode} label={ride.modeLabel} /> : null}
+        {ride.dual ? <ModeTag mode="turbo" label="Dual" /> : null}
         {ride.demo ? <Pill>Demo</Pill> : null}
       </View>
 

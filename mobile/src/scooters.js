@@ -12,10 +12,12 @@
  * `display` is how that scooter usually shows its charge, so picking a model
  * also picks the right way to ask for the battery. `maxKmh` is the factory
  * top speed; anything over the legal 25 km/h gets a note (see rules.js).
+ * `dual` marks a model with a second motor the rider can switch on, which
+ * the app records alongside the riding mode.
  */
 export const BRANDS = ["Xiaomi", "Segway", "NIU", "Navee", "KuKirin", "Dualtron"];
 
-const S = (brand, key, name, packWh, display, maxKmh) => ({ brand, key, name, packWh, display, maxKmh });
+const S = (brand, key, name, packWh, display, maxKmh, dual = false) => ({ brand, key, name, packWh, display, maxKmh, dual });
 
 export const SCOOTERS = [
   S("Xiaomi", "xiaomi-4", "Xiaomi Electric Scooter 4", 275, "app", 25),
@@ -46,11 +48,11 @@ export const SCOOTERS = [
   S("KuKirin", "kukirin-g2-pro", "KuKirin G2 Pro", 749, "bars10", 45),
   S("KuKirin", "kukirin-g2-max", "KuKirin G2 Max", 998, "bars10", 55),
   S("KuKirin", "kukirin-g2-ultra", "KuKirin G2 Ultra", 864, "bars10", 50),
-  S("KuKirin", "kukirin-g2-master", "KuKirin G2 Master", 1082, "bars10", 60),
+  S("KuKirin", "kukirin-g2-master", "KuKirin G2 Master", 1082, "bars10", 60, true),
   S("KuKirin", "kukirin-g3", "KuKirin G3", 936, "bars10", 50),
-  S("KuKirin", "kukirin-g3-pro", "KuKirin G3 Pro", 1206, "bars10", 65),
+  S("KuKirin", "kukirin-g3-pro", "KuKirin G3 Pro", 1206, "bars10", 65, true),
   S("KuKirin", "kukirin-g4", "KuKirin G4 / G4 Ultra", 1200, "bars10", 70),
-  S("KuKirin", "kukirin-g4-max", "KuKirin G4 Max", 2112, "bars10", 86),
+  S("KuKirin", "kukirin-g4-max", "KuKirin G4 Max", 2112, "bars10", 86, true),
 
   // Dualtron's EY3 and EY4 throttles can show the charge as a percentage.
   S("Dualtron", "dualtron-mini", "Dualtron Mini", 910, "number", 45),
@@ -59,20 +61,20 @@ export const SCOOTERS = [
   S("Dualtron", "dualtron-togo", "Dualtron Togo", 720, "number", 40),
   S("Dualtron", "dualtron-togo-limited", "Dualtron Togo Limited", 900, "number", 52),
   S("Dualtron", "dualtron-popular", "Dualtron Popular", 1040, "number", 45),
-  S("Dualtron", "dualtron-popular-dual", "Dualtron Popular (dual motor)", 1300, "number", 55),
-  S("Dualtron", "dualtron-eagle-pro", "Dualtron Eagle Pro", 1344, "number", 69),
-  S("Dualtron", "dualtron-city", "Dualtron City", 1500, "number", 70),
-  S("Dualtron", "dualtron-spider-2", "Dualtron Spider 2", 1800, "number", 70),
-  S("Dualtron", "dualtron-compact", "Dualtron Compact", 1800, "number", 65),
-  S("Dualtron", "dualtron-victor", "Dualtron Victor / Victor Luxury", 1800, "number", 80),
-  S("Dualtron", "dualtron-victor-luxury-plus", "Dualtron Victor Luxury+", 2100, "number", 85),
-  S("Dualtron", "dualtron-achilleus", "Dualtron Achilleus", 2100, "number", 70),
-  S("Dualtron", "dualtron-storm", "Dualtron Storm", 2268, "number", 85),
-  S("Dualtron", "dualtron-thunder-2", "Dualtron Thunder 2", 2880, "number", 100),
-  S("Dualtron", "dualtron-thunder-3", "Dualtron Thunder 3", 2880, "number", 100),
-  S("Dualtron", "dualtron-x2-up", "Dualtron X2 Up", 3024, "number", 105),
-  S("Dualtron", "dualtron-storm-limited", "Dualtron Storm Limited", 3780, "number", 100),
-  S("Dualtron", "dualtron-x-limited", "Dualtron X Limited", 5040, "number", 110),
+  S("Dualtron", "dualtron-popular-dual", "Dualtron Popular (dual motor)", 1300, "number", 55, true),
+  S("Dualtron", "dualtron-eagle-pro", "Dualtron Eagle Pro", 1344, "number", 69, true),
+  S("Dualtron", "dualtron-city", "Dualtron City", 1500, "number", 70, true),
+  S("Dualtron", "dualtron-spider-2", "Dualtron Spider 2", 1800, "number", 70, true),
+  S("Dualtron", "dualtron-compact", "Dualtron Compact", 1800, "number", 65, true),
+  S("Dualtron", "dualtron-victor", "Dualtron Victor / Victor Luxury", 1800, "number", 80, true),
+  S("Dualtron", "dualtron-victor-luxury-plus", "Dualtron Victor Luxury+", 2100, "number", 85, true),
+  S("Dualtron", "dualtron-achilleus", "Dualtron Achilleus", 2100, "number", 70, true),
+  S("Dualtron", "dualtron-storm", "Dualtron Storm", 2268, "number", 85, true),
+  S("Dualtron", "dualtron-thunder-2", "Dualtron Thunder 2", 2880, "number", 100, true),
+  S("Dualtron", "dualtron-thunder-3", "Dualtron Thunder 3", 2880, "number", 100, true),
+  S("Dualtron", "dualtron-x2-up", "Dualtron X2 Up", 3024, "number", 105, true),
+  S("Dualtron", "dualtron-storm-limited", "Dualtron Storm Limited", 3780, "number", 100, true),
+  S("Dualtron", "dualtron-x-limited", "Dualtron X Limited", 5040, "number", 110, true),
 ];
 
 export const OTHER = { key: "other", name: "Another scooter", packWh: 400, display: "app" };

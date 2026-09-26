@@ -19,26 +19,30 @@ import { energyStats } from "./ride.js"; // extension kept so this file runs und
  *  Efficiency worsens down the list because the list runs oldest first — that
  *  is the fade the app exists to measure. */
 const PLAN = [
-  // Weekend rides long enough to measure — a third to two thirds of the pack.
-  { daysAgo: 91, km: 30.0, whPerKm: 8.1, avgKmh: 21.8, ascent: 64 },
-  { daysAgo: 84, km: 28.5, whPerKm: 8.1, avgKmh: 20.9, ascent: 52 },
-  { daysAgo: 77, km: 31.0, whPerKm: 8.2, avgKmh: 22.4, ascent: 88 },
-  { daysAgo: 70, km: 29.0, whPerKm: 8.3, avgKmh: 21.0, ascent: 47 },
-  { daysAgo: 63, km: 30.5, whPerKm: 8.4, avgKmh: 21.6, ascent: 71 },
-  { daysAgo: 60, km: 5.2, whPerKm: 8.6, avgKmh: 18.4, ascent: 12 },
-  { daysAgo: 56, km: 28.0, whPerKm: 8.6, avgKmh: 20.2, ascent: 45 },
-  { daysAgo: 49, km: 31.5, whPerKm: 8.8, avgKmh: 22.1, ascent: 93 },
-  { daysAgo: 42, km: 29.5, whPerKm: 9.1, avgKmh: 21.3, ascent: 58 },
-  { daysAgo: 35, km: 30.0, whPerKm: 9.4, avgKmh: 20.7, ascent: 61 },
-  { daysAgo: 33, km: 4.8, whPerKm: 9.4, avgKmh: 17.9, ascent: 9 },
-  { daysAgo: 28, km: 28.5, whPerKm: 9.7, avgKmh: 21.5, ascent: 49 },
-  { daysAgo: 21, km: 31.0, whPerKm: 10.0, avgKmh: 22.0, ascent: 77 },
-  { daysAgo: 14, km: 29.0, whPerKm: 10.3, avgKmh: 20.6, ascent: 53 },
-  { daysAgo: 7, km: 30.5, whPerKm: 10.5, avgKmh: 21.2, ascent: 66 },
-  // Short hops this week: they count towards the goal, and are too small to
-  // say anything about the battery — which is the point of the threshold.
-  { daysAgo: 0, hoursAgo: 5, km: 6.8, whPerKm: 10.6, avgKmh: 19.3, ascent: 14 },
-  { daysAgo: 0, hoursAgo: 1, km: 9.4, whPerKm: 10.6, avgKmh: 20.8, ascent: 21 },
+  // Weekend rides long enough to measure — a third to two thirds of the pack,
+  // mostly in the middle mode, the way most people ride.
+  { daysAgo: 91, km: 30.0, whPerKm: 8.1, avgKmh: 21.8, ascent: 64, mode: "normal" },
+  { daysAgo: 84, km: 28.5, whPerKm: 8.1, avgKmh: 20.9, ascent: 52, mode: "normal" },
+  { daysAgo: 77, km: 31.0, whPerKm: 8.2, avgKmh: 22.4, ascent: 88, mode: "normal" },
+  { daysAgo: 70, km: 29.0, whPerKm: 8.3, avgKmh: 21.0, ascent: 47, mode: "normal" },
+  { daysAgo: 63, km: 30.5, whPerKm: 8.4, avgKmh: 21.6, ascent: 71, mode: "normal" },
+  { daysAgo: 60, km: 5.2, whPerKm: 7.9, avgKmh: 16.4, ascent: 12, mode: "eco" },
+  { daysAgo: 56, km: 28.0, whPerKm: 8.6, avgKmh: 20.2, ascent: 45, mode: "normal" },
+  { daysAgo: 49, km: 31.5, whPerKm: 8.8, avgKmh: 22.1, ascent: 93, mode: "normal" },
+  // A fast one and a slow one, so the modes have something to compare —
+  // Sport a third hungrier than Normal, Eco a fifth thriftier.
+  { daysAgo: 45, km: 18.0, whPerKm: 12.0, avgKmh: 26.8, ascent: 40, mode: "sport" },
+  { daysAgo: 42, km: 29.5, whPerKm: 9.1, avgKmh: 21.3, ascent: 58, mode: "normal" },
+  { daysAgo: 35, km: 30.0, whPerKm: 9.4, avgKmh: 20.7, ascent: 61, mode: "normal" },
+  { daysAgo: 33, km: 4.8, whPerKm: 8.1, avgKmh: 15.9, ascent: 9, mode: "eco" },
+  { daysAgo: 28, km: 28.5, whPerKm: 9.7, avgKmh: 21.5, ascent: 49, mode: "normal" },
+  { daysAgo: 24, km: 20.0, whPerKm: 8.1, avgKmh: 16.8, ascent: 31, mode: "eco" },
+  { daysAgo: 21, km: 31.0, whPerKm: 10.0, avgKmh: 22.0, ascent: 77, mode: "normal" },
+  { daysAgo: 14, km: 29.0, whPerKm: 10.3, avgKmh: 20.6, ascent: 53, mode: "normal" },
+  { daysAgo: 7, km: 30.5, whPerKm: 10.5, avgKmh: 21.2, ascent: 66, mode: "normal" },
+  // Short hops this week: they count towards the goal.
+  { daysAgo: 0, hoursAgo: 5, km: 6.8, whPerKm: 8.6, avgKmh: 16.3, ascent: 14, mode: "eco" },
+  { daysAgo: 0, hoursAgo: 1, km: 9.4, whPerKm: 12.8, avgKmh: 25.8, ascent: 21, mode: "sport" },
 ];
 
 const DAY_MS = 86400000;
@@ -71,7 +75,7 @@ function loop(centerLat, centerLon, distanceM, seed) {
 export function buildDemoRides(packWh, now = Date.now()) {
   const pack = Number(packWh) > 0 ? Number(packWh) : 500;
 
-  return PLAN.map(({ daysAgo, hoursAgo = 1, km, whPerKm, avgKmh, ascent }) => {
+  return PLAN.map(({ daysAgo, hoursAgo = 1, km, whPerKm, avgKmh, ascent, mode }) => {
     const distance = km * 1000;
     // Back out the two numbers a rider would actually have typed, rounded to
     // whole percent the way a gauge reads — so the seeded ride carries the
@@ -98,6 +102,7 @@ export function buildDemoRides(packWh, now = Date.now()) {
       // drawn nine times.
       track: loop(44.43 + (daysAgo % 5) * 0.004, 26.10 + (daysAgo % 7) * 0.005, distance, daysAgo),
       scooter: "My scooter",
+      mode,
       energy: energyStats({ batteryStart, batteryEnd, packWh: pack, distanceM: distance }),
     };
   }).sort((a, b) => b.startedAt - a.startedAt); // newest first, as stored

@@ -378,8 +378,11 @@ export const HEALTH_BANDS = [
  *
  * `rides` newest first, as stored.
  */
-export function packHealth(rides, { windowPct = 300 } = {}) {
-  const samples = (rides || []).filter((r) => isEnergySample(r));
+export function packHealth(rides, { windowPct = 300, mode = null } = {}) {
+  // `mode` limits the comparison to rides in one riding mode: Sport uses a
+  // third more battery than Eco, so a rider who moved from one to the other
+  // would otherwise read it as a worn pack.
+  const samples = (rides || []).filter((r) => isEnergySample(r) && (!mode || r.mode === mode));
   if (!samples.length) return null;
 
   const newest = takePct(samples, windowPct);

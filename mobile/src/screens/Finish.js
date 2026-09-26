@@ -9,6 +9,7 @@ import { haptic } from "../haptics";
 import { Button, Card, Icon, IconTile, SectionTitle, Stat, Txt, themed } from "../ui";
 import { CountUp } from "../components/CountUp";
 import { BatteryField } from "../components/BatteryField";
+import { ModePicker } from "../components/ModePicker";
 import { HeroPanel } from "../components/Gradient";
 import { Confetti } from "../components/Confetti";
 import { LevelMedal, MEDAL_COLORS, Medal } from "../components/Medal";
@@ -36,6 +37,7 @@ const colorOf = (key) => MEDAL_COLORS[BADGES.findIndex((b) => b.key === key) % M
  */
 export function FinishScreen({
   ride, rides, profile, scooter, batteryStart, onBatteryStart, batteryEnd, onBatteryEnd, onSave, onDiscard,
+  preset, mode, onMode, dual, onDual,
 }) {
   const [s, t] = useStyles();
   const insets = useSafeAreaInsets();
@@ -185,6 +187,13 @@ export function FinishScreen({
               </Card>
             </Animated.View>
           ) : null}
+
+          <Animated.View entering={enter(1)}>
+            <SectionTitle>Mode you rode in most</SectionTitle>
+            <Card>
+              <ModePicker preset={preset} value={mode} onChange={onMode} dual={dual} onDual={onDual} />
+            </Card>
+          </Animated.View>
 
           <Animated.View entering={enter(1)}>
             <SectionTitle>Battery</SectionTitle>

@@ -10,6 +10,10 @@ import { PhotoHero } from "../components/PhotoHero";
 import { ActionSheet } from "../components/ActionSheet";
 import { forgetScooterPhoto, pickScooterPhoto } from "../scooterPhoto";
 import { haptic } from "../haptics";
+import { clearError, lastError } from "../crashLog";
+
+// Read from app.json so the version shown is the version built.
+const APP_VERSION = require("../../app.json").expo.version;
 import { DisplayList, ScooterList, SpeedNote } from "../components/ScooterPicker";
 import { OTHER, findScooter } from "../scooters";
 import { AGE_BRACKETS, LOCAL, needsHelmetByLaw } from "../rules";
@@ -107,6 +111,12 @@ export function ScooterScreen({
   const kb = useKeyboardHeight();
   const [picking, setPicking] = useState(false);
   const [photoMenu, setPhotoMenu] = useState(false);
+  // The last error the app wrote down (crashLog.js), for beta testing away
+  // from the laptop.
+  const [crash, setCrash] = useState(null);
+  useEffect(() => {
+    lastError().then(setCrash);
+  }, []);
 
   const setPhoto = async (from) => {
     const r = await pickScooterPhoto(from);
@@ -315,6 +325,41 @@ export function ScooterScreen({
         </Card>
       </Animated.View>
 
+      <Animated.View entering={enter(i++)}>
+        <SectionTitle>This build</SectionTitle>
+        <Card tone="flat" style={{ gap: 10 }}>
+          <View style={s.recRow}>
+            <IconTile name="sparkle" tone="grey" />
+            <Txt role="strong" style={{ flex: 1 }}>
+              Rangely {APP_VERSION} · {__DEV__ ? "development" : "beta"}
+            </Txt>
+          </View>
+          {crash ? (
+            <>
+              <Txt role="small">
+                Last error · {new Date(crash.at).toLocaleString()}
+                {crash.fatal ? " · closed the app" : ""}
+              </Txt>
+              <Text style={s.crash} selectable numberOfLines={8}>
+                {crash.message}
+                {crash.stack ? `\n${crash.stack}` : ""}
+              </Text>
+              <Button
+                title="Clear"
+                tone="secondary"
+                size="small"
+                onPress={async () => {
+                  await clearError();
+                  setCrash(null);
+                }}
+              />
+            </>
+          ) : (
+            <Txt role="small">No errors recorded. If something breaks, it shows up here.</Txt>
+          )}
+        </Card>
+      </Animated.View>
+
       {dev ? (
         <Animated.View entering={enter(i++)}>
           <SectionTitle>Development</SectionTitle>
@@ -358,6 +403,10 @@ const useStyles = themed((t) =>
     },
     changeText: { fontFamily: F.heavy, fontSize: 14, color: t.gradInk },
     photoRow: { flexDirection: "row", justifyContent: "flex-end" },
+    crash: {
+      fontFamily: "monospace", fontSize: 11.5, lineHeight: 16, color: t.danger,
+      backgroundColor: t.surface, borderRadius: 10, padding: 10,
+    },
     photoBtn: {
       flexDirection: "row", alignItems: "center", gap: 8, height: 40, paddingHorizontal: 14,
       borderRadius: 999, backgroundColor: "rgba(0,0,0,0.42)", borderWidth: 1, borderColor: "rgba(255,255,255,0.22)",

@@ -20,9 +20,12 @@ import { RideDetail } from "./src/screens/RideDetail";
 import { ScooterScreen } from "./src/screens/Scooter";
 import { OnboardingScreen } from "./src/screens/Onboarding";
 import { LocationPrimer } from "./src/components/LocationPrimer";
+import { ErrorBoundary } from "./src/components/ErrorBoundary";
+import { installCrashLog } from "./src/crashLog";
 import { useRideTracker } from "./src/useRideTracker";
 import { energyStats, parsePercent } from "./src/ride";
-import { displayResolution } from "./src/scooters";
+import { displayResolution, findScooter } from "./src/scooters";
+import { defaultMode, modeLabel, modesFor } from "./src/modes";
 import { buildDemoRides } from "./src/demoRides";
 import {
   DEFAULT_PROFILE, DEFAULT_SCOOTER, deleteRide, loadProfile, loadRides, loadScooter,
@@ -39,10 +42,14 @@ const TABS = [
   { key: "scooter", label: "Scooter", icon: "scooter" },
 ];
 
+installCrashLog();
+
 export default function App() {
   return (
     <SafeAreaProvider>
-      <Root />
+      <ErrorBoundary>
+        <Root />
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }
@@ -68,6 +75,17 @@ function Root() {
   const [batteryStart, setBatteryStart] = useState("");
   const [batteryEnd, setBatteryEnd] = useState("");
   const [detail, setDetail] = useState(null);
+  // The riding mode for the next ride — remembered per scooter, because most
+  // people ride in the same one every day.
+  const [rideMode, setRideMode] = useState(null);
+  const [rideDual, setRideDual] = useState(null);
+  const preset = findScooter(scooter.model);
+  const modeNow = modesFor(preset).some((m) => m.mode === rideMode)
+    ? rideMode
+    : modesFor(preset).some((m) => m.mode === scooter.lastMode)
+      ? scooter.lastMode
+      : defaultMode(preset);
+  const dualNow = !!preset?.dual && (rideDual ?? !!scooter.lastDual);
 
   useEffect(() => {
     Promise.all([loadRides(), loadScooter(), loadProfile()]).then(([r, s, p]) => {
@@ -158,10 +176,18 @@ function Root() {
       track: p.track,
       scooter: scooter.name,
       model: scooter.model,
+      mode: modeNow,
+      modeLabel: modeLabel(preset, modeNow),
+      dual: preset?.dual ? dualNow : null,
       battery: energy ? { start: parsePercent(batteryStart), end: parsePercent(batteryEnd) } : null,
       energy,
     };
     setRides(await saveRide(ride));
+    if (scooter.lastMode !== modeNow || !!scooter.lastDual !== dualNow) {
+      updateScooter({ ...scooter, lastMode: modeNow, lastDual: dualNow });
+    }
+    setRideMode(null);
+    setRideDual(null);
     setPending(null);
     tracker.reset();
     setBatteryStart("");
@@ -271,11 +297,24 @@ function Root() {
     );
   } else if (tracker.tracking) {
     key = "ride";
-    screen = <RideScreen tracker={tracker} onFinish={onFinish} />;
+    screen = (
+      <RideScreen
+        tracker={tracker}
+        onFinish={onFinish}
+        ridingMode={modeNow}
+        ridingLabel={modeLabel(preset, modeNow)}
+        dual={dualNow}
+      />
+    );
   } else if (pending) {
     key = "finish";
     screen = (
       <FinishScreen
+        preset={preset}
+        mode={modeNow}
+        onMode={setRideMode}
+        dual={dualNow}
+        onDual={setRideDual}
         ride={pending}
         rides={rides}
         profile={profile}
@@ -300,6 +339,11 @@ function Root() {
               profile={profile}
               battery={batteryStart}
               onBattery={setBatteryStart}
+              preset={preset}
+              mode={modeNow}
+              onMode={setRideMode}
+              dual={dualNow}
+              onDual={setRideDual}
               onStart={onStart}
               starting={starting}
               canBackground={tracker.canBackground}

@@ -4,20 +4,20 @@
   "main": "index.js",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "~57.0.21",
+    "expo": "~57.0.25",
     "expo-file-system": "~57.0.7",
     "expo-font": "~57.0.4",
     "expo-haptics": "~57.0.3",
-    "expo-image-picker": "~57.0.19",
-    "expo-keep-awake": "~57.0.1",
-    "expo-location": "~57.0.16",
+    "expo-image-picker": "~57.0.20",
+    "expo-keep-awake": "~57.0.2",
+    "expo-location": "~57.0.20",
     "expo-status-bar": "~57.0.1",
-    "expo-task-manager": "~57.0.17",
+    "expo-task-manager": "~57.0.20",
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
-    "react-native-svg": "^15.15.5",
+    "react-native-svg": "15.15.4",
     "react-native-webview": "13.16.1",
     "react-native-worklets": "0.10.1"
   },
@@ -27,7 +27,8 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "node src/ride.test.mjs",
-    "testride": "node tools/makeTestRide.mjs"
+    "testride": "node tools/makeTestRide.mjs",
+    "beta": "powershell -ExecutionPolicy Bypass -File tools/build-beta.ps1"
   },
   "private": true
 }
