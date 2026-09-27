@@ -36,6 +36,11 @@ const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ATTRIBUTION = "&copy; OpenStreetMap contributors";
 const LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist";
 
+/** OpenStreetMap's tile policy asks every app to say who it is. The WebView
+ *  appends this to its own user agent, and the page's base URL gives the
+ *  tiles a referer. */
+const APP_UA = "Rangely/0.3 (+https://github.com/cristicoroama/Rangely)";
+
 /** "#36D17F" → "rgba(54,209,127,a)", for the halo round the live dot. */
 function rgba(hex, a) {
   const n = parseInt(String(hex).replace("#", ""), 16);
@@ -201,6 +206,7 @@ export function RealMap({ track, height = 320, live = false, style }) {
         ref={ref}
         source={{ html, baseUrl: "https://rangely.app/" }}
         originWhitelist={["*"]}
+        applicationNameForUserAgent={APP_UA}
         onMessage={(e) => {
           if (e.nativeEvent.data === "ready") {
             setFailed(false);
@@ -224,6 +230,126 @@ export function RealMap({ track, height = 320, live = false, style }) {
           <Text style={[s.noteText, { color: t.text2 }]}>
             The map needs internet. Your ride is still being recorded.
           </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------ range map -- */
+
+/**
+ * "There and back" on a real map: where you are, a filled circle for how far
+ * out you can go and still ride home, and a dashed ring for how far the
+ * battery goes if you are not coming back.
+ *
+ * It sits in a scrolling page, so it is a picture rather than a map you can
+ * drag — a map that grabs the scroll gesture is a page you cannot scroll. The
+ * circle is framed once, with a little of the dashed ring showing past it.
+ */
+function rangeShell(t) {
+  const dark = t.scheme === "dark";
+  const tileFilter = dark
+    ? "filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.86) saturate(0.6);"
+    : "filter: saturate(0.85);";
+  const attr = dark ? { bg: "rgba(10,12,14,0.72)", ink: "#7F8893" } : { bg: "rgba(255,255,255,0.8)", ink: "#6C747E" };
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<link rel="stylesheet" href="${LEAFLET}/leaflet.css" />
+<style>
+  html, body, #map { margin: 0; height: 100%; width: 100%; background: ${t.surface2}; }
+  .leaflet-container { background: ${t.surface2}; outline: none; }
+  .leaflet-tile-pane { ${tileFilter} }
+  .leaflet-control-attribution { background: ${attr.bg} !important; color: ${attr.ink} !important; font-size: 9px !important; }
+  .leaflet-control-attribution a { color: ${attr.ink} !important; }
+  .you { width: 18px; height: 18px; border-radius: 50%; background: ${t.accentFill}; border: 3px solid #fff; box-sizing: border-box; box-shadow: 0 0 0 6px ${rgba(t.accentFill, 0.28)}, 0 1px 4px rgba(0,0,0,0.3); }
+</style>
+<script src="${LEAFLET}/leaflet.js"></script>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  var map = L.map('map', {
+    zoomControl: false, attributionControl: true, dragging: false, touchZoom: false,
+    scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, tap: false
+  });
+  map.setView([44.43, 26.10], 11);
+  L.tileLayer('${TILES}', { maxZoom: 19, attribution: '${ATTRIBUTION}' }).addTo(map);
+  var inner = null, outer = null, you = null;
+
+  window.setRange = function (lat, lon, r, r2) {
+    var c = [lat, lon];
+    if (!inner) {
+      outer = L.circle(c, { radius: r2, color: '${t.grad[1]}', weight: 2, opacity: 0.9, dashArray: '6 7', fill: false }).addTo(map);
+      inner = L.circle(c, { radius: r, color: '${t.accentFill}', weight: 3, opacity: 1, fillColor: '${t.accentFill}', fillOpacity: ${dark ? 0.16 : 0.14} }).addTo(map);
+      you = L.marker(c, { icon: L.divIcon({ className: '', html: '<div class="you"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }) }).addTo(map);
+    } else {
+      inner.setLatLng(c); inner.setRadius(r);
+      outer.setLatLng(c); outer.setRadius(r2);
+      you.setLatLng(c);
+    }
+    // Framed on the filled circle with room round it, so the edge of the
+    // dashed one shows as a hint of "further, but no way back".
+    map.fitBounds(inner.getBounds().pad(0.28), { animate: false });
+  };
+
+  if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage('ready');
+</script>
+</body>
+</html>`;
+}
+
+export function RangeMap({ center, radiusM, outerM, height = 200, style }) {
+  const t = useTheme();
+  const ref = useRef(null);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const html = useMemo(() => rangeShell(t), [t]);
+  useEffect(() => setReady(false), [html]);
+
+  const lat = center?.lat;
+  const lon = center?.lon;
+  // Rounded so a GPS wobble of a few metres does not redraw the map.
+  const r = Math.round(radiusM / 50) * 50;
+  const r2 = Math.round(outerM / 50) * 50;
+
+  useEffect(() => {
+    if (!ready || !ref.current || !Number.isFinite(lat) || !Number.isFinite(lon) || !(r > 0)) return;
+    ref.current.injectJavaScript(`window.setRange(${lat}, ${lon}, ${r}, ${Math.max(r, r2)}); true;`);
+  }, [ready, lat, lon, r, r2]);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[s.box, { height, backgroundColor: t.surface2, borderRadius: t.radiusSm }, style]}
+    >
+      <WebView
+        key={t.scheme}
+        ref={ref}
+        source={{ html, baseUrl: "https://rangely.app/" }}
+        originWhitelist={["*"]}
+        applicationNameForUserAgent={APP_UA}
+        onMessage={(e) => {
+          if (e.nativeEvent.data === "ready") {
+            setFailed(false);
+            setReady(true);
+          }
+        }}
+        onError={() => setFailed(true)}
+        onHttpError={() => setFailed(true)}
+        javaScriptEnabled
+        scrollEnabled={false}
+        overScrollMode="never"
+        bounces={false}
+        androidLayerType="hardware"
+        style={[s.web, { backgroundColor: t.surface2 }]}
+      />
+      {failed && (
+        <View style={[s.note, { backgroundColor: t.surface, borderColor: t.line }]}>
+          <Text style={[s.noteText, { color: t.text2 }]}>The map needs internet. The distance above still holds.</Text>
         </View>
       )}
     </View>

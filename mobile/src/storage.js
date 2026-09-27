@@ -15,6 +15,20 @@ const SCOOTER_KEY = "rangely.scooter.v1";
 const PROFILE_KEY = "rangely.profile.v1";
 
 /**
+ * Every change to the ride list is a read, a change and a write, and two of
+ * them can now be in flight at once — the weather for a ride arriving while
+ * the next one is being saved. Interleaved, the later write would carry a
+ * list read before the earlier one landed, and a ride would vanish. So
+ * writes to the list take turns.
+ */
+let queue = Promise.resolve();
+function inTurn(fn) {
+  const run = queue.then(fn, fn);
+  queue = run.catch(() => {});
+  return run;
+}
+
+/**
  * `model` is a preset key from scooters.js (or "other"), `display` is how the
  * scooter shows its charge — "app", "number", "bars10" or "bars" — which
  * decides both how the battery is asked for and how much a reading can be
@@ -28,7 +42,7 @@ export const DEFAULT_SCOOTER = { name: "My scooter", model: null, packWh: 500, d
  * (which rules apply), a weekly goal, and whether the three opening screens
  * have been seen. No name, no birth date, no account.
  */
-export const DEFAULT_PROFILE = { onboarded: false, ageBracket: null, goalKm: 25 };
+export const DEFAULT_PROFILE = { onboarded: false, ageBracket: null, goalKm: 25, autoPause: true };
 
 export async function loadRides() {
   try {
@@ -46,27 +60,44 @@ export async function loadRides() {
   }
 }
 
-export async function saveRide(ride) {
-  const rides = await loadRides();
-  const next = [ride, ...rides];
-  await AsyncStorage.setItem(RIDES_KEY, JSON.stringify(next));
-  return next;
+export function saveRide(ride) {
+  return inTurn(async () => {
+    const rides = await loadRides();
+    const next = [ride, ...rides.filter((r) => r.id !== ride.id)];
+    await AsyncStorage.setItem(RIDES_KEY, JSON.stringify(next));
+    return next;
+  });
 }
 
 /** Overwrite the whole history in one write. Used by the delete path and by
  *  the development seed; a loop of saveRide() would re-read and re-write the
  *  list once per ride. */
-export async function replaceRides(list) {
-  const next = Array.isArray(list) ? list : [];
-  await AsyncStorage.setItem(RIDES_KEY, JSON.stringify(next));
-  return next;
+export function replaceRides(list) {
+  return inTurn(async () => {
+    const next = Array.isArray(list) ? list : [];
+    await AsyncStorage.setItem(RIDES_KEY, JSON.stringify(next));
+    return next;
+  });
 }
 
-export async function deleteRide(id) {
-  const rides = await loadRides();
-  const next = rides.filter((r) => r.id !== id);
-  await AsyncStorage.setItem(RIDES_KEY, JSON.stringify(next));
-  return next;
+export function deleteRide(id) {
+  return inTurn(async () => {
+    const rides = await loadRides();
+    const next = rides.filter((r) => r.id !== id);
+    await AsyncStorage.setItem(RIDES_KEY, JSON.stringify(next));
+    return next;
+  });
+}
+
+/** Merge fields into rides by id — `{ [id]: { weather } }` — against the
+ *  list as it is on disk now, not as it was when the change was asked for. */
+export function patchRides(patches) {
+  return inTurn(async () => {
+    const rides = await loadRides();
+    const next = rides.map((r) => (patches[r.id] ? { ...r, ...patches[r.id] } : r));
+    await AsyncStorage.setItem(RIDES_KEY, JSON.stringify(next));
+    return next;
+  });
 }
 
 export async function loadScooter() {

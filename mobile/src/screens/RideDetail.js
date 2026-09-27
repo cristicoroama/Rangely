@@ -9,6 +9,8 @@ import { Button, Card, Icon, IconTile, Pill, Press, SectionTitle, Stat, Txt, the
 import { HeroPanel } from "../components/Gradient";
 import { ModeTag } from "../components/ModePicker";
 import { RouteMap } from "../map";
+import { WeatherChip, weatherLine } from "../components/Weather";
+import { WEATHER_CREDIT } from "../weather";
 import { avgSpeed, fmtDuration, isEnergySample, msToKmh } from "../ride";
 import { dayLabel, timeLabel } from "../when";
 
@@ -83,6 +85,15 @@ export function RideDetail({ ride, onClose, onDelete }) {
               <Stat onHero label="Total" icon="clock" value={fmtDuration(ride.elapsed || 0)} />
               <Stat onHero label="Stopped" icon="pause" value={fmtDuration(Math.max(0, (ride.elapsed || 0) - (ride.movingTime || 0)))} />
             </View>
+            {ride.weather ? (
+              <View style={s.weatherRow}>
+                <WeatherChip weather={ride.weather} onHero />
+                <Text style={s.weatherText} numberOfLines={1}>
+                  {weatherLine(ride.weather).split(" · ").slice(1).join(" · ")}
+                  {ride.weather.precipMm >= 0.2 ? ` · ${ride.weather.precipMm} mm rain` : ""}
+                </Text>
+              </View>
+            ) : null}
             {ride.gaps > 0 ? (
               <View style={s.note}>
                 <Icon name="warning" size={14} color="#FFC56B" />
@@ -120,9 +131,17 @@ export function RideDetail({ ride, onClose, onDelete }) {
                 <Txt role="small" style={{ marginTop: 12 }}>
                   Too short to count toward battery health — that takes at least 2 km and 10% of battery.
                 </Txt>
+              ) : ride.weather && ride.weather.tempC < 10 ? (
+                <Txt role="small" style={{ marginTop: 12 }}>
+                  It was {Math.round(ride.weather.tempC)}° out. Batteries give less in the cold, so this range reads low.
+                </Txt>
               ) : null}
             </Card>
           </Animated.View>
+        ) : null}
+
+        {ride.weather ? (
+          <Txt role="small" style={{ marginTop: 16, textAlign: "center" }}>{WEATHER_CREDIT}</Txt>
         ) : null}
 
         <Animated.View entering={enter(3)} style={{ marginTop: 24 }}>
@@ -152,6 +171,8 @@ const useStyles = themed((t) =>
     heroUnit: { fontFamily: F.num, fontSize: 26, color: t.onHero3 },
     grid: { flexDirection: "row", gap: 12, marginTop: 16 },
     note: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 16 },
+    weatherRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 16 },
+    weatherText: { fontFamily: F.semi, fontSize: 13.5, color: t.onHero2, flex: 1 },
     batteryLine: { flexDirection: "row", alignItems: "center", gap: 8 },
     batteryNum: { ...TYPE.value, color: t.text },
   }),

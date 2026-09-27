@@ -15,6 +15,8 @@ import { Confetti } from "../components/Confetti";
 import { LevelMedal, MEDAL_COLORS, Medal } from "../components/Medal";
 import { ProgressBar } from "../components/ProgressBar";
 import { RouteMap } from "../map";
+import { WeatherChip, weatherLine } from "../components/Weather";
+import { WEATHER_CREDIT } from "../weather";
 import { avgSpeed, energyStats, fmtDuration, isEnergySample, msToKmh } from "../ride";
 import { displayResolution } from "../scooters";
 import { weeklyProgress } from "../goals";
@@ -37,7 +39,7 @@ const colorOf = (key) => MEDAL_COLORS[BADGES.findIndex((b) => b.key === key) % M
  */
 export function FinishScreen({
   ride, rides, profile, scooter, batteryStart, onBatteryStart, batteryEnd, onBatteryEnd, onSave, onDiscard,
-  preset, mode, onMode, dual, onDual,
+  preset, mode, onMode, dual, onDual, weather,
 }) {
   const [s, t] = useStyles();
   const insets = useSafeAreaInsets();
@@ -110,6 +112,11 @@ export function FinishScreen({
                 {dayLabel(ride.startedAt)} · {timeLabel(ride.startedAt)}
               </Text>
             </Animated.View>
+            {weather ? (
+              <Animated.View entering={FadeIn.duration(DUR.base)}>
+                <WeatherChip weather={weather} onHero wind />
+              </Animated.View>
+            ) : null}
           </View>
           <View style={s.heroRow}>
             <CountUp value={km} format={(v) => v.toFixed(2)} style={s.heroValue} delay={250} />
@@ -212,6 +219,9 @@ export function FinishScreen({
                     {counts
                       ? "Measured on this ride, from your own battery readings."
                       : "Saved — but too short to count toward battery health. That takes at least 2 km and 10% of battery."}
+                    {counts && weather && weather.tempC < 10
+                      ? ` It was ${Math.round(weather.tempC)}° out, and cold takes range — so this one reads low.`
+                      : ""}
                   </Txt>
                 </Animated.View>
               ) : (
@@ -230,6 +240,11 @@ export function FinishScreen({
             <Animated.View entering={enter(2)}>
               <SectionTitle>Route</SectionTitle>
               <RouteMap track={ride.track} height={240} />
+              {weather ? (
+                <Txt role="small" style={{ marginTop: 8 }}>
+                  {weatherLine(weather)} · {WEATHER_CREDIT}
+                </Txt>
+              ) : null}
             </Animated.View>
           ) : null}
 

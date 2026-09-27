@@ -11,6 +11,7 @@ import { HeroPanel } from "../components/Gradient";
 import { LevelMedal } from "../components/Medal";
 import { ModeTag } from "../components/ModePicker";
 import { RouteShape } from "../map";
+import { WeatherChip } from "../components/Weather";
 import { avgSpeed, fmtDuration, msToKmh, totals } from "../ride";
 import { riderLevel } from "../achievements";
 import { dayLabel, timeLabel } from "../when";
@@ -71,9 +72,10 @@ function RideRow({ ride, index, onOpen }) {
           <Text style={s.meta}>
             {fmtDuration(ride.movingTime)} · {msToKmh(avgSpeed(ride)).toFixed(1)} km/h
           </Text>
-          {Number.isFinite(range) || ride.demo || ride.mode ? (
+          {Number.isFinite(range) || ride.demo || ride.mode || ride.weather ? (
             <View style={s.pills}>
               {ride.mode ? <ModeTag mode={ride.mode} label={ride.modeLabel} /> : null}
+              <WeatherChip weather={ride.weather} />
               {Number.isFinite(range) ? <Pill tone="aqua" icon="battery">{`~${Math.round(range)} km range`}</Pill> : null}
               {ride.demo ? <Pill>Demo</Pill> : null}
             </View>

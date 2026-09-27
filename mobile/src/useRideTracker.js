@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Location from "expo-location";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 
-import { addPoint, emptyRide, pauseRide } from "./ride";
+import { addPoint, currentSpeed, emptyRide, pauseRide } from "./ride";
+import { autoPauseEnd, autoPauseStep, autoPausedMs, idleAuto } from "./autoPause";
+import { haptic } from "./haptics";
 import {
   hasBackgroundPermission,
   isBackgroundRunning,
@@ -23,6 +25,9 @@ function toPoint(loc) {
     alt: c.altitude,
     accuracy: c.accuracy,
     altAccuracy: c.altitudeAccuracy,
+    // The chip's own Doppler speed: steadier than position deltas when
+    // standing still, which is exactly when auto-pause has to decide.
+    speed: c.speed,
     t: loc?.timestamp,
   };
 }
@@ -53,14 +58,21 @@ function releaseKeepAwake() {
  * after resuming starts a new segment instead of drawing a straight line from
  * wherever you stopped (see `pauseRide` in ride.js).
  *
+ * Auto-pause (autoPause.js) rides along on the same fixes: the GPS stays on,
+ * only the clock stops, and it starts again by itself when the scooter moves.
+ *
  * Nothing in here requests the background permission on its own. That is a
  * separate button (`enableBackground`) for a reason worth remembering: on
  * Android the request sends the user out to a settings screen, and starting a
  * foreground service on the way back is a native crash rather than an error
  * that can be caught.
  */
-export function useRideTracker() {
+export function useRideTracker({ autoPause = true } = {}) {
   const [state, setState] = useState(emptyRide);
+  const [auto, setAuto] = useState(idleAuto);
+  const autoRef = useRef(auto);
+  const autoOn = useRef(autoPause);
+  autoOn.current = autoPause;
   const [tracking, setTracking] = useState(false);
   const [paused, setPaused] = useState(false);
   const [mode, setMode] = useState(null); // "background" | "foreground" | null
@@ -68,7 +80,8 @@ export function useRideTracker() {
   const [error, setError] = useState("");
   // The ride clock: wall time since start, minus every pause. Kept apart from
   // the ride's own `elapsed`, which only moves when a fix arrives — a clock
-  // that stops ticking at a red light looks broken.
+  // that freezes whenever the GPS goes quiet looks broken. Auto-pause stops
+  // it on purpose, and the ride screen says so.
   const [clock, setClock] = useState({ startedAt: null, pausedAt: null, pausedMs: 0 });
 
   const sub = useRef(null);
@@ -77,13 +90,26 @@ export function useRideTracker() {
   // the last second or two of a ride missing for no visible reason.
   const latest = useRef(state);
 
-  const fold = useCallback((loc) => {
-    setState((s) => {
-      const next = addPoint(s, toPoint(loc));
-      latest.current = next;
-      return next;
-    });
+  const setAutoState = useCallback((a) => {
+    autoRef.current = a;
+    setAuto(a);
   }, []);
+
+  // Folded outside a state updater: the auto-pause step reads the ride as it
+  // is after this fix, and an updater may run later, or twice.
+  const fold = useCallback((loc) => {
+    const p = toPoint(loc);
+    const next = addPoint(latest.current, p);
+    if (next !== latest.current) {
+      latest.current = next;
+      setState(next);
+    }
+    if (!autoOn.current) return;
+    const speed = Number.isFinite(p.speed) && p.speed >= 0 ? p.speed : next.last ? currentSpeed(next) : NaN;
+    const a = autoPauseStep(autoRef.current, speed, p.t);
+    if (a.event || a.stillSince !== autoRef.current.stillSince) setAutoState(a);
+    if (a.event) haptic.light();
+  }, [setAutoState]);
 
   // A task left running by a force-quit or a crash keeps a notification alive
   // and burns battery for a ride nobody is looking at any more. Its fixes are
@@ -179,6 +205,7 @@ export function useRideTracker() {
       const fresh = emptyRide();
       latest.current = fresh;
       setState(fresh);
+      setAutoState(idleAuto());
       setPaused(false);
       setClock({ startedAt: Date.now(), pausedAt: null, pausedMs: 0 });
 
@@ -193,19 +220,21 @@ export function useRideTracker() {
       // failure a rider cannot report and cannot work around.
       return fail(e?.message ? `Could not start: ${e.message}` : "Could not start the GPS.");
     }
-  }, [closeSource, openSource]);
+  }, [closeSource, openSource, setAutoState]);
 
   const pause = useCallback(() => {
     if (!tracking || paused) return;
     closeSource();
-    setState((s) => {
-      const next = pauseRide(s);
-      latest.current = next;
-      return next;
-    });
+    const next = pauseRide(latest.current);
+    latest.current = next;
+    setState(next);
+    // A hand pause while the clock had already stopped by itself: the auto
+    // pause ends here and the hand one takes over, so nothing counts twice.
+    const now = Date.now();
+    setAutoState(autoPauseEnd(autoRef.current, now));
     setPaused(true);
-    setClock((c) => ({ ...c, pausedAt: Date.now() }));
-  }, [tracking, paused, closeSource]);
+    setClock((c) => ({ ...c, pausedAt: now }));
+  }, [tracking, paused, closeSource, setAutoState]);
 
   const resume = useCallback(async () => {
     if (!tracking || !paused) return { ok: true };
@@ -229,30 +258,34 @@ export function useRideTracker() {
 
   const stop = useCallback(() => {
     closeSource();
+    setAutoState(autoPauseEnd(autoRef.current, Date.now()));
     setTracking(false);
     setPaused(false);
     setMode(null);
     // State is returned rather than cleared: the caller still has to write the
     // ride down, and wiping it here would throw away what was just recorded.
     return latest.current;
-  }, [closeSource]);
+  }, [closeSource, setAutoState]);
 
   const reset = useCallback(() => {
     const fresh = emptyRide();
     latest.current = fresh;
     setState(fresh);
+    setAutoState(idleAuto());
     setClock({ startedAt: null, pausedAt: null, pausedMs: 0 });
-  }, []);
+  }, [setAutoState]);
 
   return {
     state, tracking, paused, mode, error, canBackground, clock,
+    auto, autoPaused: !paused && auto.paused,
     start, pause, resume, stop, reset, enableBackground,
   };
 }
 
-/** Milliseconds on the ride clock at `now`: running time, pauses left out. */
-export function clockMs(clock, now = Date.now()) {
+/** Milliseconds on the ride clock at `now`: running time, with the rider's
+ *  own pauses and the automatic ones both left out. */
+export function clockMs(clock, now = Date.now(), auto = null) {
   if (!clock?.startedAt) return 0;
   const end = clock.pausedAt ?? now;
-  return Math.max(0, end - clock.startedAt - (clock.pausedMs || 0));
+  return Math.max(0, end - clock.startedAt - (clock.pausedMs || 0) - autoPausedMs(auto, end));
 }

@@ -14,8 +14,13 @@ Early, and riding on a phone. Built for riders from 14 up, so the bar is: a
 first-time rider understands every screen without being told.
 
 - [x] Ride recording — distance, moving time, average speed, ascent, pause and resume
+- [x] Auto-pause — the clock stops at a red light and starts again when you ride off
+- [x] There and back — how far out you can ride and still get home, from your own
+      km per 1% in the mode you picked, drawn as a circle round where you are
 - [x] Energy — km per 1% of battery, measured full range, Wh/km
 - [x] Battery health — measured range now against when the record started
+- [x] Weather — on every ride and on the home screen (Open-Meteo, no key); cold rides
+      are told apart from a worn pack
 - [x] Riding modes — each brand's own names (KuKirin 1 · Eco / 2 · Sport / 3 · Race,
       Segway ECO / D / S…), a Dual motor switch, range and consumption per mode
 - [x] Weekly goal — a ring that fills, the last six weeks under it, weeks-in-a-row
@@ -25,6 +30,7 @@ first-time rider understands every screen without being told.
 - [x] Route map — the ride drawn on OpenStreetMap, live while you ride
 - [x] Light and dark — follows the phone
 - [x] Background tracking — in a development build or APK
+- [x] Backup — one JSON file to Google Drive or a computer, and a merge-restore
 - [ ] Accounts and a server
 - [ ] Leaderboards — distance and coverage, never speed
 - [ ] City coverage map
@@ -254,6 +260,13 @@ The research behind it is in the dossier; the short version:
   distance. Everything is computed from the rides, nothing extra is stored.
 - **A weekly goal, not a streak.** Streaks punish a rainy day; a weekly target
   forgives one, and nothing is ever shown as "broken".
+- **Answers before numbers.** "23 km each way" is what a rider needs before
+  turning off the main road, not a range figure to do sums with. It keeps 10%
+  in the pack and a 10% margin, and the circle on the map is drawn smaller
+  than the distance, because roads are never straight.
+- **Weather, privately.** Only a position rounded to about a kilometre goes to
+  Open-Meteo — never the route. A cold ride's lower range is labelled as the
+  cold, so it is not mistaken for a dying battery.
 - **The law as data.** `src/rules.js` holds the Romanian rules with the date
   they were checked, the age group chosen at the start decides which ones are
   highlighted, and after sunset the home screen asks for lights, something
@@ -274,6 +287,10 @@ mobile/
     achievements.js       levels, badges, weeks-in-a-row — computed, not stored
     rules.js              the law, dated; sunset for the dusk check
     scooters.js           presets with pack sizes; battery display types
+    range.js              "there and back": reserve, margin, road factor
+    weather.js            Open-Meteo: parsing, cold factor, road warnings
+    autoPause.js          the stop/start thresholds for the ride clock
+    backup.js             backup file format, checks and merge
     ride.test.mjs         tests for all of the above
     useRideTracker.js     owns the GPS: start, pause, resume, stop
     backgroundLocation.js the TaskManager task and its permissions
@@ -283,6 +300,8 @@ mobile/
     realMap.js            Leaflet in a WebView — pan, zoom, live position
     demoRides.js          invented history for the development seed
     storage.js            rides, scooter and profile, on the phone
+    backupFile.js         saving and opening backups through Android's pickers
+    useHere.js            where you are and the weather there, for home
     theme.js              palettes, brand gradient, bundled fonts, type scale
     motion.js             durations, curves, springs, reduce-motion
     haptics.js            vibration that can never throw

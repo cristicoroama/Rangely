@@ -5,7 +5,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 
 import { F, TYPE } from "../theme";
 import { DUR } from "../motion";
-import { Button, Card, Icon, IconTile, Pill, Press, SectionTitle, Txt, themed } from "../ui";
+import { Button, Card, Icon, IconTile, Pill, Press, SectionTitle, ToggleRow, Txt, themed } from "../ui";
 import { PhotoHero } from "../components/PhotoHero";
 import { ActionSheet } from "../components/ActionSheet";
 import { forgetScooterPhoto, pickScooterPhoto } from "../scooterPhoto";
@@ -18,6 +18,8 @@ import { DisplayList, ScooterList, SpeedNote } from "../components/ScooterPicker
 import { OTHER, findScooter } from "../scooters";
 import { AGE_BRACKETS, LOCAL, needsHelmetByLaw } from "../rules";
 import { useKeyboardHeight } from "../useKeyboard";
+import { dayLabel, plural } from "../when";
+import { WEATHER_CREDIT, WEATHER_CREDIT_URL } from "../weather";
 
 const enter = (i) => FadeInDown.delay(60 + i * 60).duration(DUR.base);
 
@@ -104,7 +106,7 @@ function RuleRow({ icon, text, you }) {
 
 export function ScooterScreen({
   scooter, onScooter, profile, onProfile, canBackground, onEnableBackground,
-  dev,
+  rideCount = 0, onExport, onImport, dev,
 }) {
   const [s, t] = useStyles();
   const insets = useSafeAreaInsets();
@@ -162,6 +164,11 @@ export function ScooterScreen({
   };
 
   const setGoal = (km) => onProfile({ ...profile, goalKm: Math.max(5, Math.min(300, km)) });
+
+  // A nudge, not a nag: only once there is something worth losing, and only
+  // when the last copy is a month old or there has never been one.
+  const lastBackup = profile.lastBackupAt;
+  const stale = rideCount >= 5 && (!lastBackup || Date.now() - lastBackup > 30 * 86400000);
 
   let i = 0;
   return (
@@ -256,6 +263,15 @@ export function ScooterScreen({
       <Animated.View entering={enter(i++)}>
         <SectionTitle>Recording</SectionTitle>
         <Card>
+          <ToggleRow
+            icon="pause"
+            tone="aqua"
+            title="Auto-pause"
+            sub="Stops the clock at red lights, starts it when you ride off."
+            value={profile.autoPause !== false}
+            onChange={(v) => onProfile({ ...profile, autoPause: v })}
+          />
+          <View style={[s.divider, { marginVertical: 12 }]} />
           {canBackground ? (
             <View style={s.recRow}>
               <IconTile name="check" tone="green" />
@@ -274,6 +290,29 @@ export function ScooterScreen({
               <Button title="Allow screen-off recording" tone="secondary" icon="light" onPress={onEnableBackground} />
             </>
           )}
+        </Card>
+      </Animated.View>
+
+      <Animated.View entering={enter(i++)}>
+        <SectionTitle>Your rides, backed up</SectionTitle>
+        <Card>
+          <View style={s.recRow}>
+            <IconTile name="shield" tone={stale ? "warn" : "green"} />
+            <View style={{ flex: 1 }}>
+              <Txt role="strong">{stale ? "Time for a backup" : "Keep a copy"}</Txt>
+              <Txt role="small">
+                {lastBackup ? `Last saved ${dayLabel(lastBackup)}` : "No backup yet"} · {plural(rideCount, "ride")}
+              </Txt>
+            </View>
+          </View>
+          <Txt style={{ marginTop: 10, marginBottom: 14 }}>
+            There is no account, so your rides live only on this phone. Save a backup file to Google Drive or
+            your computer, and you can bring everything back on a new phone.
+          </Txt>
+          <View style={{ gap: 8 }}>
+            <Button title="Save a backup" icon="download" tone={stale ? "primary" : "secondary"} onPress={onExport} />
+            <Button title="Restore from a backup" icon="upload" tone="ghost" onPress={onImport} />
+          </View>
         </Card>
       </Animated.View>
 
@@ -318,10 +357,19 @@ export function ScooterScreen({
         <SectionTitle>Privacy</SectionTitle>
         <Card tone="flat" style={{ flexDirection: "row", gap: 12 }}>
           <IconTile name="lock" tone="grey" />
-          <Txt style={{ flex: 1 }}>
-            Your rides stay on this phone. There is no account and nothing is uploaded. The map
-            loads its streets from OpenStreetMap while you look at it.
-          </Txt>
+          <View style={{ flex: 1, gap: 8 }}>
+            <Txt>
+              Your rides stay on this phone. There is no account and nothing is uploaded. The map loads its
+              streets from OpenStreetMap while you look at it.
+            </Txt>
+            <Txt>
+              For the weather, Rangely sends Open-Meteo your rough area — rounded to about a kilometre — and
+              never your route.
+            </Txt>
+            <Press onPress={() => Linking.openURL(WEATHER_CREDIT_URL)} accessibilityRole="link" hitSlop={8}>
+              <Text style={s.credit}>{WEATHER_CREDIT}</Text>
+            </Press>
+          </View>
         </Card>
       </Animated.View>
 
@@ -413,6 +461,7 @@ const useStyles = themed((t) =>
     },
     photoBtnText: { fontFamily: F.bold, fontSize: 14, color: t.onHero },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: t.line },
+    credit: { fontFamily: F.bold, fontSize: 13, color: t.accent },
     fieldRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     field: {
       flexDirection: "row", alignItems: "center", minWidth: 150, maxWidth: 200, height: 48,

@@ -23,6 +23,8 @@ import { useNow } from "../useNow";
  * "where am I", and two controls that cannot be confused — a tap to pause,
  * and a hold to finish, so a gloved thumb or a bump in the road never ends a
  * ride. Paused looks different at a glance: amber, dimmed, and it says so.
+ * Stopping at a light does the same by itself (auto-pause), in a softer
+ * amber, and undoes itself when the scooter moves.
  *
  * Speed is not a headline. The scooter already shows it, and making the
  * fastest number the biggest thing on screen rewards the wrong thing; it only
@@ -31,7 +33,7 @@ import { useNow } from "../useNow";
 export function RideScreen({ tracker, onFinish, ridingMode, ridingLabel, dual }) {
   const [s, t] = useStyles();
   const insets = useSafeAreaInsets();
-  const { state, paused, mode, clock, pause, resume } = tracker;
+  const { state, paused, mode, clock, pause, resume, auto, autoPaused } = tracker;
   const now = useNow(1000, !paused);
 
   const km = state.distance / 1000;
@@ -41,18 +43,20 @@ export function RideScreen({ tracker, onFinish, ridingMode, ridingLabel, dual })
   const searching = !paused && !state.last;
 
   const dim = useAnimatedStyle(() => ({
-    opacity: withTiming(paused ? 0.5 : 1, { duration: DUR.base }),
+    opacity: withTiming(paused ? 0.5 : autoPaused ? 0.72 : 1, { duration: DUR.base }),
   }));
+  const status = paused ? "PAUSED" : autoPaused ? "AUTO-PAUSED" : "RECORDING";
 
   return (
     <View style={[s.screen, { paddingBottom: Math.max(insets.bottom, 12) }]}>
       <HeroPanel style={[s.hero, { paddingTop: insets.top + 10 }]}>
         <View style={s.top}>
-          <View style={[s.status, { backgroundColor: paused ? "rgba(245,165,36,0.18)" : "rgba(239,75,63,0.2)" }]}>
-            <RecDot paused={paused} size={10} />
-            <Text style={[s.statusText, { color: paused ? "#FFC56B" : "#FF8A80" }]}>
-              {paused ? "PAUSED" : "RECORDING"}
-            </Text>
+          <View
+            style={[s.status, { backgroundColor: paused || autoPaused ? "rgba(245,165,36,0.18)" : "rgba(239,75,63,0.2)" }]}
+            accessibilityLiveRegion="polite"
+          >
+            <RecDot paused={paused || autoPaused} size={10} />
+            <Text style={[s.statusText, { color: paused || autoPaused ? "#FFC56B" : "#FF8A80" }]}>{status}</Text>
           </View>
           {/* The mode chosen before the ride, as a reminder of what these
               numbers were measured in. */}
@@ -76,7 +80,7 @@ export function RideScreen({ tracker, onFinish, ridingMode, ridingLabel, dual })
 
         <Animated.View style={[s.stats, dim]}>
           <View style={s.stat}>
-            <Text style={s.statValue}>{fmtDuration(clockMs(clock, now) / 1000)}</Text>
+            <Text style={s.statValue}>{fmtDuration(clockMs(clock, now, auto) / 1000)}</Text>
             <Text style={s.statLabel}>Time</Text>
           </View>
           <View style={s.sep} />
@@ -131,7 +135,12 @@ export function RideScreen({ tracker, onFinish, ridingMode, ridingLabel, dual })
         />
         <HoldButton label="Hold to finish" onComplete={onFinish} style={{ flex: 1.35 }} />
       </View>
-      {!paused ? (
+      {autoPaused ? (
+        <Animated.View entering={FadeIn.duration(DUR.quick)} style={s.note}>
+          <Icon name="pause" size={12} color={t.warn} />
+          <Txt role="small">Stopped — the clock starts again when you ride off.</Txt>
+        </Animated.View>
+      ) : !paused ? (
         <View style={s.note}>
           <Icon name={mode === "background" ? "check" : "light"} size={13} color={mode === "background" ? t.accent : t.text3} />
           <Txt role="small">

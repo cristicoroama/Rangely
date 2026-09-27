@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, BackHandler, Linking, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useFonts } from "expo-font";
@@ -23,14 +23,21 @@ import { LocationPrimer } from "./src/components/LocationPrimer";
 import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { installCrashLog } from "./src/crashLog";
 import { useRideTracker } from "./src/useRideTracker";
+import { useHere } from "./src/useHere";
 import { energyStats, parsePercent } from "./src/ride";
+import { canLookUp, fetchRideWeather } from "./src/weather";
+import { buildBackup, mergeBackup } from "./src/backup";
+import { openBackupFile, saveBackupFile } from "./src/backupFile";
+import { plural } from "./src/when";
 import { displayResolution, findScooter } from "./src/scooters";
 import { defaultMode, modeLabel, modesFor } from "./src/modes";
 import { buildDemoRides } from "./src/demoRides";
 import {
   DEFAULT_PROFILE, DEFAULT_SCOOTER, deleteRide, loadProfile, loadRides, loadScooter,
-  replaceRides, saveProfile, saveRide, saveScooter,
+  patchRides, replaceRides, saveProfile, saveRide, saveScooter,
 } from "./src/storage";
+
+const APP_VERSION = require("./app.json").expo.version;
 
 /** Under fifty metres there is no ride, only GPS drift — saving it would
  *  pollute the history and every total built on it. */
@@ -56,7 +63,6 @@ export default function App() {
 
 function Root() {
   const t = useTheme();
-  const tracker = useRideTracker();
   // Bundled fonts, loaded before the first frame; a failure falls back to the
   // system font rather than a blank app.
   const [fontsLoaded, fontError] = useFonts(FONT_FILES);
@@ -66,6 +72,10 @@ function Root() {
   const [rides, setRides] = useState([]);
   const [scooter, setScooter] = useState(DEFAULT_SCOOTER);
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const tracker = useRideTracker({ autoPause: profile.autoPause !== false });
+  // Where the rider is and the weather there — only once the app is set up,
+  // and not while a ride is recording (the ride has its own GPS).
+  const here = useHere(loaded && profile.onboarded && !tracker.tracking);
 
   const [tab, setTab] = useState("home");
   const [starting, setStarting] = useState(false);
@@ -75,6 +85,9 @@ function Root() {
   const [batteryStart, setBatteryStart] = useState("");
   const [batteryEnd, setBatteryEnd] = useState("");
   const [detail, setDetail] = useState(null);
+  // The weather in the hour the pending ride started, looked up while the
+  // rider is still typing the battery in.
+  const [pendingWeather, setPendingWeather] = useState(null);
   // The riding mode for the next ride — remembered per scooter, because most
   // people ride in the same one every day.
   const [rideMode, setRideMode] = useState(null);
@@ -98,6 +111,85 @@ function Root() {
 
   const updateScooter = useCallback(async (next) => setScooter(await saveScooter(next)), []);
   const updateProfile = useCallback(async (next) => setProfile(await saveProfile(next)), []);
+
+  /* ------------------------------------------------------------ weather -- */
+
+  useEffect(() => {
+    setPendingWeather(null);
+    if (!pending) return undefined;
+    let alive = true;
+    fetchRideWeather(pending).then((w) => {
+      if (alive && w) setPendingWeather(w);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [pending]);
+
+  // Rides saved offline get their weather later, the next time the phone is
+  // online — a few at a time, and each gives up after three tries. The
+  // current weather arriving is the sign that the network works.
+  const backfilled = useRef(false);
+  useEffect(() => {
+    if (!here.weather || backfilled.current || !loaded) return;
+    backfilled.current = true;
+    const todo = rides.filter((r) => canLookUp(r)).slice(0, 6);
+    if (!todo.length) return;
+    (async () => {
+      const patches = {};
+      for (const r of todo) {
+        const w = await fetchRideWeather(r);
+        patches[r.id] = w ? { weather: w } : { weatherTries: (r.weatherTries || 0) + 1 };
+      }
+      setRides(await patchRides(patches));
+    })();
+  }, [here.weather, loaded, rides]);
+
+  /* ------------------------------------------------------------- backup -- */
+
+  async function onExport() {
+    const data = buildBackup({ rides, scooter, profile, appVersion: APP_VERSION });
+    const r = await saveBackupFile(data);
+    if (r.ok) {
+      haptic.success();
+      updateProfile({ ...profile, lastBackupAt: data.exportedAt });
+      Alert.alert("Backup saved", `${r.name} — ${plural(rides.length, "ride")}. Keep it somewhere that isn't this phone.`);
+    } else if (r.reason !== "cancelled") {
+      haptic.warning();
+      Alert.alert("Couldn't save the backup", r.message || "Try another folder.");
+    }
+  }
+
+  async function onImport() {
+    const r = await openBackupFile();
+    if (!r.ok) {
+      if (r.reason !== "cancelled") {
+        haptic.warning();
+        Alert.alert("Couldn't restore", r.message || "That file could not be read.");
+      }
+      return;
+    }
+    const merged = mergeBackup({ rides, scooter, profile }, r.data);
+    const when = r.data.exportedAt ? ` from ${new Date(r.data.exportedAt).toISOString().slice(0, 10)}` : "";
+    Alert.alert(
+      "Restore this backup?",
+      merged.added > 0
+        ? `Adds ${plural(merged.added, "ride")} you don't have yet${when}, and brings back your scooter and goal. Rides already here stay as they are.`
+        : `Every ride in this backup${when} is already here. Your scooter and goal settings will be brought back.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Restore",
+          onPress: async () => {
+            setRides(await replaceRides(merged.rides));
+            await updateScooter(merged.scooter);
+            await updateProfile({ ...merged.profile, onboarded: true });
+            haptic.success();
+          },
+        },
+      ],
+    );
+  }
 
   /* ---------------------------------------------------------- the ride -- */
 
@@ -181,8 +273,16 @@ function Root() {
       dual: preset?.dual ? dualNow : null,
       battery: energy ? { start: parsePercent(batteryStart), end: parsePercent(batteryEnd) } : null,
       energy,
+      weather: pendingWeather,
     };
     setRides(await saveRide(ride));
+    // Offline at the finish: try once more in the background; failing that,
+    // the backfill picks it up later.
+    if (!pendingWeather) {
+      fetchRideWeather(ride).then(async (w) => {
+        if (w) setRides(await patchRides({ [ride.id]: { weather: w } }));
+      });
+    }
     if (scooter.lastMode !== modeNow || !!scooter.lastDual !== dualNow) {
       updateScooter({ ...scooter, lastMode: modeNow, lastDual: dualNow });
     }
@@ -323,6 +423,7 @@ function Root() {
         onBatteryStart={setBatteryStart}
         batteryEnd={batteryEnd}
         onBatteryEnd={setBatteryEnd}
+        weather={pendingWeather}
         onSave={onSave}
         onDiscard={onDiscard}
       />
@@ -344,6 +445,7 @@ function Root() {
               onMode={setRideMode}
               dual={dualNow}
               onDual={setRideDual}
+              here={here}
               onStart={onStart}
               starting={starting}
               canBackground={tracker.canBackground}
@@ -361,6 +463,9 @@ function Root() {
               onProfile={updateProfile}
               canBackground={tracker.canBackground}
               onEnableBackground={onEnableBackground}
+              rideCount={rides.filter((r) => !r.demo).length}
+              onExport={onExport}
+              onImport={onImport}
               dev={dev}
             />
           )}

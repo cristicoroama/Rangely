@@ -23,8 +23,11 @@ import { HeroPanel } from "../components/Gradient";
 import { LevelMedal, MEDAL_COLORS, Medal } from "../components/Medal";
 import { ModePicker } from "../components/ModePicker";
 import { GradientFill } from "../components/Gradient";
+import { RangeCard } from "../components/RangeCard";
+import { WeatherChip } from "../components/Weather";
 import { RouteShape } from "../map";
-import { fmtDuration } from "../ride";
+import { fmtDuration, isEnergySample } from "../ride";
+import { coldInsight } from "../weather";
 import { MODES, healthFor, modeInsight, modeLabel, modeStats } from "../modes";
 import { recentWeeks, weeklyProgress } from "../goals";
 import { LOCAL, isAfterDark, needsHelmetByLaw } from "../rules";
@@ -271,6 +274,7 @@ function BadgeRow({ rides, goalKm }) {
 function HealthCard({ rides, preset }) {
   const [s, t] = useStyles();
   const health = useMemo(() => healthFor(rides), [rides]);
+  const cold = useMemo(() => coldInsight(rides.filter(isEnergySample)), [rides]);
   const basis = health?.mode ? `Compared on your ${modeLabel(preset, health.mode)} rides.` : null;
 
   if (!health) {
@@ -313,6 +317,7 @@ function HealthCard({ rides, preset }) {
           Unlocks after about {plural(charges, "more full charge")} of riding.
         </Txt>
         <ProgressBar fraction={judged} />
+        <ColdNote cold={cold} />
       </Card>
     );
   }
@@ -340,7 +345,24 @@ function HealthCard({ rides, preset }) {
           {basis} Sport uses more battery than Eco, so mixing them would look like wear.
         </Txt>
       ) : null}
+      <ColdNote cold={cold} />
     </Card>
+  );
+}
+
+/** Cold rides against warm ones, when there are enough of both: so a lower
+ *  winter range reads as the weather, not as a worn pack. */
+function ColdNote({ cold }) {
+  const [s, t] = useStyles();
+  if (!cold) return null;
+  return (
+    <View style={[s.insight, { backgroundColor: t.aquaWash }]}>
+      <Icon name="temp" size={16} color={t.aqua} />
+      <Text style={s.insightText}>
+        Below {cold.coldBelow}° your battery goes {Math.round(cold.lossPct)}% less far than above {cold.warmFrom}°.
+        That's the cold, not wear — it comes back when it warms up.
+      </Text>
+    </View>
   );
 }
 
@@ -422,7 +444,10 @@ function LastRide({ ride, onOpen, now }) {
           {(ride.distance / 1000).toFixed(1)}
           <Text style={s.lastUnit}> km</Text>
         </Text>
-        <Txt role="small">{fmtDuration(ride.movingTime)} moving</Txt>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Txt role="small">{fmtDuration(ride.movingTime)} moving</Txt>
+          <WeatherChip weather={ride.weather} />
+        </View>
       </View>
       <Icon name="chevron" size={20} color={t.text3} />
     </Press>
@@ -433,7 +458,7 @@ function LastRide({ ride, onOpen, now }) {
 
 export function HomeScreen({
   rides, scooter, profile, battery, onBattery, onStart, starting, canBackground,
-  onOpenRide, onSeeAll, onOpenScooter, preset, mode, onMode, dual, onDual,
+  onOpenRide, onSeeAll, onOpenScooter, preset, mode, onMode, dual, onDual, here,
 }) {
   const [s, t] = useStyles();
   const insets = useSafeAreaInsets();
@@ -491,6 +516,15 @@ export function HomeScreen({
               <Txt role="strong" style={{ marginBottom: 10 }}>Riding mode</Txt>
               <ModePicker preset={preset} value={mode} onChange={onMode} dual={dual} onDual={onDual} />
             </Card>
+            <RangeCard
+              rides={rides}
+              preset={preset}
+              mode={mode}
+              dual={dual}
+              packWh={Number(scooter.packWh)}
+              battery={battery}
+              here={here}
+            />
           </Animated.View>
 
           {/* After dark, a quick check before setting off: lights, something

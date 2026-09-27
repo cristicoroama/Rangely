@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -69,6 +70,20 @@ const ICONS = {
   photo: "M15 8h.01 M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12 M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5 M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3",
   trash: "M4 7l16 0 M10 11l0 6 M14 11l0 6 M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12 M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3",
   cameraPlus: "M12 20h-7a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v3.5 M16 19h6 M19 16v6 M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0",
+  // Weather
+  cloud: "M6.657 18c-2.572 0 -4.657 -2.007 -4.657 -4.483c0 -2.475 2.085 -4.482 4.657 -4.482c.393 -1.762 1.794 -3.2 3.675 -3.773c1.88 -.572 3.956 -.193 5.444 1c1.488 1.19 2.162 3.007 1.77 4.769h.99c1.913 0 3.464 1.56 3.464 3.486c0 1.927 -1.551 3.487 -3.465 3.487h-11.878",
+  rain: "M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7 M11 13v2m0 3v2m4 -5v2m0 3v2",
+  snow: "M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7 M11 15v.01m0 3v.01m0 3v.01m4 -4v.01m0 3v.01",
+  fog: "M7 16a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-12 M5 20l14 0",
+  storm: "M7 18a4.6 4.4 0 0 1 0 -9a5 4.5 0 0 1 11 2h1a3.5 3.5 0 0 1 0 7h-1 M13 14l-2 4l3 0l-2 4",
+  wind: "M5 8h8.5a2.5 2.5 0 1 0 -2.34 -3.24 M3 12h15.5a2.5 2.5 0 1 1 -2.34 3.24 M4 16h5.5a2.5 2.5 0 1 1 -2.34 3.24",
+  temp: "M10 13.5a4 4 0 1 0 4 0v-8.5a2 2 0 0 0 -4 0v8.5 M10 9l4 0",
+  // Backup and places
+  download: "M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2 M7 11l5 5l5 -5 M12 4l0 12",
+  upload: "M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2 M7 9l5 -5l5 5 M12 4l0 12",
+  shield: "M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06 M15 19l2 2l4 -4",
+  location: "M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0 M4 12a8 8 0 1 0 16 0a8 8 0 1 0 -16 0 M12 2l0 2 M12 20l0 2 M20 12l2 0 M2 12l2 0",
+  pin: "M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0 M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0",
 };
 
 /** Icons that are not on the 24-grid stroke system: their own viewBox, filled. */
@@ -113,7 +128,7 @@ export function Icon({ name, size = 16, color, strokeWidth = 2 }) {
  * of a second and springs back — the whole of the feedback most taps need —
  * and can add a haptic for the ones that change something.
  */
-export function Press({ onPress, onLongPress, disabled, style, outerStyle, children, scaleTo = 0.97, feel, hitSlop, accessibilityLabel, accessibilityRole = "button" }) {
+export function Press({ onPress, onLongPress, disabled, style, outerStyle, children, scaleTo = 0.97, feel, hitSlop, accessibilityLabel, accessibilityRole = "button", accessibilityState }) {
   const scale = useSharedValue(1);
   const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
@@ -138,7 +153,7 @@ export function Press({ onPress, onLongPress, disabled, style, outerStyle, child
       hitSlop={hitSlop ?? 6}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={{ ...accessibilityState, disabled: !!disabled }}
     >
       <Animated.View style={[style, anim, disabled && { opacity: 0.45 }]}>{children}</Animated.View>
     </Pressable>
@@ -381,6 +396,49 @@ export function Sparkline({ values, height = 52 }) {
         }}
       />
     </View>
+  );
+}
+
+/* ----------------------------------------------------------------- toggle -- */
+
+const useToggleStyles = themed((t) =>
+  StyleSheet.create({
+    row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52 },
+    title: { ...TYPE.bodyStrong, color: t.text },
+    sub: { ...TYPE.small, color: t.text3, marginTop: 1 },
+    track: { width: 50, height: 30, borderRadius: 15, justifyContent: "center" },
+    knob: { position: "absolute", top: 3, width: 24, height: 24, borderRadius: 12, backgroundColor: "#FFFFFF", boxShadow: "0px 1px 3px rgba(0,0,0,0.25)" },
+  }),
+);
+
+/** A setting that is on or off: the whole row is the switch, not just the
+ *  knob, because a 50-point target on a moving scooter is a small target. */
+export function ToggleRow({ title, sub, value, onChange, icon, tone = "green" }) {
+  const [s, t] = useToggleStyles();
+  const x = useSharedValue(value ? 1 : 0);
+  useEffect(() => {
+    x.value = withTiming(value ? 1 : 0, { duration: DUR.quick });
+  }, [value, x]);
+  const knob = useAnimatedStyle(() => ({ transform: [{ translateX: 3 + x.value * 20 }] }));
+  return (
+    <Press
+      feel="tap"
+      scaleTo={0.99}
+      onPress={() => onChange(!value)}
+      accessibilityRole="switch"
+      accessibilityLabel={title}
+      accessibilityState={{ checked: !!value }}
+      style={s.row}
+    >
+      {icon ? <IconTile name={icon} tone={tone} /> : null}
+      <View style={{ flex: 1 }}>
+        <Text style={s.title}>{title}</Text>
+        {sub ? <Text style={s.sub}>{sub}</Text> : null}
+      </View>
+      <View style={[s.track, { backgroundColor: value ? t.accentFill : t.lineStrong }]}>
+        <Animated.View style={[s.knob, knob]} />
+      </View>
+    </Press>
   );
 }
 

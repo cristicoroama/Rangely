@@ -19,6 +19,13 @@ import { buildDemoRides } from "./demoRides.js";
 import { LEVELS, riderLevel, goalStreak, badges, newlyEarned } from "./achievements.js";
 import { MODES, modesFor, modeLabel, defaultMode, modeStats, modeInsight, healthFor } from "./modes.js";
 import { TILE, fitView, latToY, lonToX, projectTrack, tilesFor, trackBounds } from "./slippy.js";
+import {
+  weatherKind, roadWarning, parseCurrent, parseHourAt, currentUrl, rideHourUrl, coldFactor, tempAdjust,
+  coldInsight, fmtTemp, canLookUp, fetchCurrentWeather, fetchRideWeather, roundCoord,
+} from "./weather.js";
+import { rangeBasis, thereAndBack, basisLine, RESERVE_PCT, MARGIN, ROAD_FACTOR } from "./range.js";
+import { AUTO_PAUSE, idleAuto, autoPauseStep, autoPauseEnd, autoPausedMs } from "./autoPause.js";
+import { buildBackup, parseBackup, mergeBackup, backupFileName, BACKUP_KIND } from "./backup.js";
 
 let failures = 0;
 const show = (v) => (typeof v === "object" ? JSON.stringify(v) : String(v));
@@ -502,6 +509,162 @@ console.log("\nriding modes");
   check("one mode is no comparison", modeInsight(st.slice(0, 1)), null);
   check("unmoded rides are left out", modeStats([{ ...rides[0], mode: undefined }]).length, 0);
   check("MODES are four", Object.keys(MODES).length, 4);
+}
+
+
+console.log("\nauto-pause");
+{
+  const feed = (speeds, t0 = 0, a = idleAuto()) => {
+    const events = [];
+    speeds.forEach((v, i) => {
+      a = autoPauseStep(a, v, t0 + i * 1000);
+      if (a.event) events.push([a.event, t0 + i * 1000]);
+    });
+    return { a, events };
+  };
+  const moving = Array(10).fill(5);
+  const stopped = Array(20).fill(0.2);
+  let r = feed([...moving, ...stopped, ...moving]);
+  check("stops, then starts again", r.events.map((e) => e[0]), ["pause", "resume"]);
+  check("pause dated from the first still fix", r.a.pausedMs, 20000);
+  check("five seconds still is not a stop", feed([...moving, 0, 0, 0, 0, 0, ...moving]).events.length, 0);
+  check("walking pace does not resume", feed([...moving, ...stopped, 1.2, 1.2, 1.2]).a.paused, true);
+  check("a push past 5 km/h does", feed([...moving, ...stopped, 1.6]).a.paused, false);
+  check("bad readings change nothing", autoPauseStep(idleAuto(), NaN, 5).stillSince, null);
+  r = feed([...moving, ...stopped]);
+  check("counted up to now while paused", autoPausedMs(r.a, 34000), 24000);
+  check("a hand pause closes it", autoPauseEnd(r.a, 40000).pausedMs, 30000);
+  check("closing an idle state is harmless", autoPauseEnd(idleAuto(), 5).pausedMs, 0);
+  check("thresholds leave a gap", AUTO_PAUSE.goAboveMs > AUTO_PAUSE.stopBelowMs, true);
+}
+
+console.log("\nweather");
+{
+  check("clear", weatherKind(0).key, "clear");
+  check("showers are rain", weatherKind(81).key, "rain");
+  check("freezing drizzle is ice", weatherKind(56).key, "ice");
+  check("snow grains are snow", weatherKind(77).key, "snow");
+  check("storm", weatherKind(95).icon, "storm");
+  check("no code, no kind", weatherKind(undefined), null);
+  check("ice warns hard", roadWarning({ tempC: -2, code: 71, precipMm: 1 }).level, "danger");
+  check("rain warns", roadWarning({ tempC: 12, code: 63, precipMm: 2 }).level, "warn");
+  check("sun does not", roadWarning({ tempC: 22, code: 0, precipMm: 0 }), null);
+
+  const cur = { current: { time: 1790000000, temperature_2m: 11.44, precipitation: 0, weather_code: 3, wind_speed_10m: 13.6 } };
+  check("current parsed", parseCurrent(cur), { t: 1790000000000, tempC: 11.4, precipMm: 0, code: 3, windKmh: 14 });
+  check("no temperature, no reading", parseCurrent({ current: { time: 1 } }), null);
+  const hourly = { hourly: { time: [3600 * 10, 3600 * 11], temperature_2m: [8, 9.5], precipitation: [0, 0.4], weather_code: [2, 61], wind_speed_10m: [5, 9] } };
+  check("nearest hour chosen", parseHourAt(hourly, 3600 * 1000 * 10.8).tempC, 9.5);
+  check("far from any hour: nothing", parseHourAt(hourly, 3600 * 1000 * 20), null);
+
+  check("coordinates rounded to ~1 km", roundCoord(47.158931), 47.16);
+  check("url carries only rounded coordinates", currentUrl(47.158931, 27.601234).includes("latitude=47.16&longitude=27.6&"), true);
+  const u = rideHourUrl(47.1, 27.6, Date.UTC(2026, 8, 20, 9, 40));
+  check("ride hour asked in UTC", u.includes("start_hour=2026-09-20T09:00&end_hour=2026-09-20T10:00"), true);
+
+  check("warm is full range", coldFactor(25), 1);
+  check("10° takes 15%", coldFactor(10), 0.85, 1e-9);
+  check("never below 60%", coldFactor(-30), 0.6);
+  check("same temperature, no change", tempAdjust(12, 12), 1, 1e-9);
+  check("measured in summer, riding at 5°", tempAdjust(5, 25), 0.775, 1e-9);
+  check("no temperature today, no change", tempAdjust(null, 5), 1);
+  check("minus sign", fmtTemp(-3.4), "−3°");
+
+  const now = Date.UTC(2026, 8, 27);
+  const base = { id: "a", startedAt: now - 5 * 86400000, track: [[47.1, 27.6], [47.11, 27.61]] };
+  check("recent ride can be looked up", canLookUp(base, now), true);
+  check("demo rides are not", canLookUp({ ...base, demo: true }, now), false);
+  check("too old for the API", canLookUp({ ...base, startedAt: now - 100 * 86400000 }, now), false);
+  check("three tries and it stops", canLookUp({ ...base, weatherTries: 3 }, now), false);
+  check("no route, no place", canLookUp({ ...base, track: [] }, now), false);
+
+  const ok = (json) => async () => ({ ok: true, json: async () => json });
+  const w = await fetchCurrentWeather(47.1, 27.6, { fetchImpl: ok(cur) });
+  check("fetch current", w.tempC, 11.4);
+  const off = await fetchCurrentWeather(47.1, 27.6, { fetchImpl: async () => { throw new Error("offline"); } });
+  check("offline is null, not an error", off, null);
+  const bad = await fetchCurrentWeather(47.1, 27.6, { fetchImpl: async () => ({ ok: false }) });
+  check("an error status is null", bad, null);
+  const rw = await fetchRideWeather({ ...base, startedAt: 3600 * 1000 * 10.2 }, { fetchImpl: ok(hourly) });
+  check("ride weather from its hour", rw.code, 2);
+
+  const sample = (km, used, tempC) => ({
+    distance: km * 1000, weather: { tempC }, energy: { usedPct: used },
+  });
+  const warm = [sample(20, 40, 22), sample(15, 30, 18)];
+  const cold = [sample(16, 40, 4), sample(12, 30, 6)];
+  const ci = coldInsight([...warm, ...cold]);
+  check("cold costs a fifth", Math.round(ci.lossPct), 20);
+  check("one cold ride is not a pattern", coldInsight([...warm, cold[0]]), null);
+}
+
+console.log("\nthere and back");
+{
+  const at = (d) => new Date(2026, 8, d, 17).getTime();
+  const r = (km, used, mode, tempC) => ({
+    startedAt: at(1), distance: km * 1000, mode, weather: Number.isFinite(tempC) ? { tempC } : null,
+    energy: energyStats({ batteryStart: 90, batteryEnd: 90 - used, packWh: 500, distanceM: km * 1000 }),
+  });
+  const rides = [r(20, 40, "normal", 18), r(15, 30, "normal", 18), r(6, 15, "sport", 18)];
+  const b = rangeBasis(rides, { mode: "normal" });
+  check("own mode first", b.source, "mode");
+  check("pooled km per 1%", b.kmPerPct, 0.5, 1e-9);
+  check("measured temperature carried", b.tempC, 18);
+  check("too little sport: all rides instead", rangeBasis(rides, { mode: "sport" }).source, "all");
+  const g = rangeBasis([], { mode: "eco", packWh: 550 });
+  check("no rides: a guess", g.source, "guess");
+  check("guess from the pack size", g.kmPerPct, 0.5, 1e-9);
+  check("dual motors guess hungrier", rangeBasis([], { mode: "eco", packWh: 550, dual: true }).kmPerPct < g.kmPerPct, true);
+
+  const t = thereAndBack(80, b);
+  const total = (80 - RESERVE_PCT) * 0.5 * MARGIN;
+  check("round trip keeps the reserve and a margin", t.roundTripKm, total, 1e-9);
+  check("half out, half back", t.eachWayKm, total / 2, 1e-9);
+  check("circle drawn smaller than the road", t.radiusM, (total / 2) * 1000 / ROAD_FACTOR, 1e-6);
+  check("the ring is the full one-way reach", t.oneWayRadiusM, 2 * t.radiusM, 1e-6);
+  check("cold today shrinks it", thereAndBack(80, b, { tempNow: 3 }).eachWayKm < t.eachWayKm, true);
+  check("below the reserve: nothing out", thereAndBack(8, b).eachWayKm, 0);
+  check("low battery flagged", thereAndBack(14, b).lowBattery, true);
+  check("unknown battery: no answer", thereAndBack(NaN, b), null);
+  check("the line says where from", basisLine(t, "D").startsWith("0.50 km per 1% from your D rides"), true);
+}
+
+console.log("\nbackup");
+{
+  const rides = [
+    { id: "2", startedAt: 2000, distance: 5000 },
+    { id: "1", startedAt: 1000, distance: 3000 },
+  ];
+  const scooter = { name: "Fulger", model: "kukirin-g2-max", packWh: 998, photo: "file:///data/photo.jpg" };
+  const profile = { onboarded: true, ageBracket: "14to15", goalKm: 40, autoPause: false, lastBackupAt: 5 };
+  const b = buildBackup({ rides, scooter, profile, appVersion: "0.3.0", now: Date.UTC(2026, 8, 27, 12) });
+  check("marked as a Rangely backup", b.kind, BACKUP_KIND);
+  check("the photo path stays behind", "photo" in b.scooter, false);
+  check("settings carried, bookkeeping not", b.profile, { ageBracket: "14to15", goalKm: 40, autoPause: false });
+  check("file named by date", backupFileName(b.exportedAt), "rangely-backup-2026-09-27.json");
+
+  const round = parseBackup(JSON.stringify(b));
+  check("reads back", round.ok && round.data.rides.length, 2);
+  check("not JSON", parseBackup("hello").ok, false);
+  check("somebody else's JSON", parseBackup(JSON.stringify({ rides: [] })).ok, false);
+  check("from the future", parseBackup(JSON.stringify({ ...b, version: 99 })).ok, false);
+  const junk = parseBackup(JSON.stringify({ ...b, rides: [...b.rides, { id: "x" }, null] }));
+  check("broken rides skipped and counted", [junk.data.rides.length, junk.data.skipped], [2, 2]);
+
+  const phone = {
+    rides: [{ id: "3", startedAt: 3000, distance: 1000 }, { id: "1", startedAt: 1000, distance: 3000, note: "mine" }],
+    scooter: { name: "My scooter", model: null, packWh: 500, photo: "file:///new.jpg" },
+    profile: { onboarded: true, goalKm: 25, lastBackupAt: 9 },
+  };
+  const m = mergeBackup(phone, round.data);
+  check("adds only what is missing", m.added, 1);
+  check("newest first after merging", m.rides.map((x) => x.id), ["3", "2", "1"]);
+  check("rides on the phone win", m.rides.find((x) => x.id === "1").note, "mine");
+  check("scooter comes back", m.scooter.model, "kukirin-g2-max");
+  check("the photo on this phone stays", m.scooter.photo, "file:///new.jpg");
+  check("goal comes back", m.profile.goalKm, 40);
+  check("local bookkeeping stays", m.profile.lastBackupAt, 9);
+  check("restoring twice adds nothing", mergeBackup({ ...phone, rides: m.rides }, round.data).added, 0);
 }
 
 console.log("\nformatting");

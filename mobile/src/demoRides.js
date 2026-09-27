@@ -21,28 +21,28 @@ import { energyStats } from "./ride.js"; // extension kept so this file runs und
 const PLAN = [
   // Weekend rides long enough to measure — a third to two thirds of the pack,
   // mostly in the middle mode, the way most people ride.
-  { daysAgo: 91, km: 30.0, whPerKm: 8.1, avgKmh: 21.8, ascent: 64, mode: "normal" },
-  { daysAgo: 84, km: 28.5, whPerKm: 8.1, avgKmh: 20.9, ascent: 52, mode: "normal" },
-  { daysAgo: 77, km: 31.0, whPerKm: 8.2, avgKmh: 22.4, ascent: 88, mode: "normal" },
-  { daysAgo: 70, km: 29.0, whPerKm: 8.3, avgKmh: 21.0, ascent: 47, mode: "normal" },
-  { daysAgo: 63, km: 30.5, whPerKm: 8.4, avgKmh: 21.6, ascent: 71, mode: "normal" },
-  { daysAgo: 60, km: 5.2, whPerKm: 7.9, avgKmh: 16.4, ascent: 12, mode: "eco" },
-  { daysAgo: 56, km: 28.0, whPerKm: 8.6, avgKmh: 20.2, ascent: 45, mode: "normal" },
-  { daysAgo: 49, km: 31.5, whPerKm: 8.8, avgKmh: 22.1, ascent: 93, mode: "normal" },
+  { daysAgo: 91, km: 30.0, whPerKm: 8.1, avgKmh: 21.8, ascent: 64, mode: "normal", w: [27, 0, 8] },
+  { daysAgo: 84, km: 28.5, whPerKm: 8.1, avgKmh: 20.9, ascent: 52, mode: "normal", w: [29, 1, 6] },
+  { daysAgo: 77, km: 31.0, whPerKm: 8.2, avgKmh: 22.4, ascent: 88, mode: "normal", w: [31, 0, 5] },
+  { daysAgo: 70, km: 29.0, whPerKm: 8.3, avgKmh: 21.0, ascent: 47, mode: "normal", w: [26, 2, 12] },
+  { daysAgo: 63, km: 30.5, whPerKm: 8.4, avgKmh: 21.6, ascent: 71, mode: "normal", w: [28, 1, 9] },
+  { daysAgo: 60, km: 5.2, whPerKm: 7.9, avgKmh: 16.4, ascent: 12, mode: "eco", w: [24, 3, 14] },
+  { daysAgo: 56, km: 28.0, whPerKm: 8.6, avgKmh: 20.2, ascent: 45, mode: "normal", w: [30, 0, 7] },
+  { daysAgo: 49, km: 31.5, whPerKm: 8.8, avgKmh: 22.1, ascent: 93, mode: "normal", w: [25, 2, 18] },
   // A fast one and a slow one, so the modes have something to compare —
   // Sport a third hungrier than Normal, Eco a fifth thriftier.
-  { daysAgo: 45, km: 18.0, whPerKm: 12.0, avgKmh: 26.8, ascent: 40, mode: "sport" },
-  { daysAgo: 42, km: 29.5, whPerKm: 9.1, avgKmh: 21.3, ascent: 58, mode: "normal" },
-  { daysAgo: 35, km: 30.0, whPerKm: 9.4, avgKmh: 20.7, ascent: 61, mode: "normal" },
-  { daysAgo: 33, km: 4.8, whPerKm: 8.1, avgKmh: 15.9, ascent: 9, mode: "eco" },
-  { daysAgo: 28, km: 28.5, whPerKm: 9.7, avgKmh: 21.5, ascent: 49, mode: "normal" },
-  { daysAgo: 24, km: 20.0, whPerKm: 8.1, avgKmh: 16.8, ascent: 31, mode: "eco" },
-  { daysAgo: 21, km: 31.0, whPerKm: 10.0, avgKmh: 22.0, ascent: 77, mode: "normal" },
-  { daysAgo: 14, km: 29.0, whPerKm: 10.3, avgKmh: 20.6, ascent: 53, mode: "normal" },
-  { daysAgo: 7, km: 30.5, whPerKm: 10.5, avgKmh: 21.2, ascent: 66, mode: "normal" },
+  { daysAgo: 45, km: 18.0, whPerKm: 12.0, avgKmh: 26.8, ascent: 40, mode: "sport", w: [27, 1, 10] },
+  { daysAgo: 42, km: 29.5, whPerKm: 9.1, avgKmh: 21.3, ascent: 58, mode: "normal", w: [23, 3, 16] },
+  { daysAgo: 35, km: 30.0, whPerKm: 9.4, avgKmh: 20.7, ascent: 61, mode: "normal", w: [22, 1, 11] },
+  { daysAgo: 33, km: 4.8, whPerKm: 8.1, avgKmh: 15.9, ascent: 9, mode: "eco", w: [19, 61, 17] },
+  { daysAgo: 28, km: 28.5, whPerKm: 9.7, avgKmh: 21.5, ascent: 49, mode: "normal", w: [21, 2, 9] },
+  { daysAgo: 24, km: 20.0, whPerKm: 8.1, avgKmh: 16.8, ascent: 31, mode: "eco", w: [20, 0, 6] },
+  { daysAgo: 21, km: 31.0, whPerKm: 10.0, avgKmh: 22.0, ascent: 77, mode: "normal", w: [18, 3, 21] },
+  { daysAgo: 14, km: 29.0, whPerKm: 10.3, avgKmh: 20.6, ascent: 53, mode: "normal", w: [17, 2, 13] },
+  { daysAgo: 7, km: 30.5, whPerKm: 10.5, avgKmh: 21.2, ascent: 66, mode: "normal", w: [16, 1, 10] },
   // Short hops this week: they count towards the goal.
-  { daysAgo: 0, hoursAgo: 5, km: 6.8, whPerKm: 8.6, avgKmh: 16.3, ascent: 14, mode: "eco" },
-  { daysAgo: 0, hoursAgo: 1, km: 9.4, whPerKm: 12.8, avgKmh: 25.8, ascent: 21, mode: "sport" },
+  { daysAgo: 0, hoursAgo: 5, km: 6.8, whPerKm: 8.6, avgKmh: 16.3, ascent: 14, mode: "eco", w: [15, 2, 9] },
+  { daysAgo: 0, hoursAgo: 1, km: 9.4, whPerKm: 12.8, avgKmh: 25.8, ascent: 21, mode: "sport", w: [14, 3, 15] },
 ];
 
 const DAY_MS = 86400000;
@@ -75,7 +75,7 @@ function loop(centerLat, centerLon, distanceM, seed) {
 export function buildDemoRides(packWh, now = Date.now()) {
   const pack = Number(packWh) > 0 ? Number(packWh) : 500;
 
-  return PLAN.map(({ daysAgo, hoursAgo = 1, km, whPerKm, avgKmh, ascent, mode }) => {
+  return PLAN.map(({ daysAgo, hoursAgo = 1, km, whPerKm, avgKmh, ascent, mode, w }) => {
     const distance = km * 1000;
     // Back out the two numbers a rider would actually have typed, rounded to
     // whole percent the way a gauge reads — so the seeded ride carries the
@@ -104,6 +104,8 @@ export function buildDemoRides(packWh, now = Date.now()) {
       scooter: "My scooter",
       mode,
       energy: energyStats({ batteryStart, batteryEnd, packWh: pack, distanceM: distance }),
+      // Summer into autumn in Bucharest: [°C, WMO code, wind km/h].
+      weather: w ? { t: startedAt, tempC: w[0], code: w[1], windKmh: w[2], precipMm: w[1] >= 51 ? 1.2 : 0 } : null,
     };
   }).sort((a, b) => b.startedAt - a.startedAt); // newest first, as stored
 }
